@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <h1 id="site-title">Loading…</h1>
+    <div class="header-actions">
+      <span class="site-meta" id="site-meta"></span>
+      <div id="export-bar" class="export-bar"></div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" role="tab" data-mode="edit" aria-selected="true">Edit</button>
+    <button class="tab" role="tab" data-mode="design" aria-selected="false">Design</button>
+  </nav>
+
+  <main>
+    <section id="panel-edit" class="panel active" data-mode="edit" role="tabpanel">
+      <nav id="view-tabs" class="view-tabs" role="tablist"></nav>
+      <div id="view-mount" class="view-mount"></div>
+    </section>
+
+    <section id="panel-design" class="panel" data-mode="design" role="tabpanel">
+      <h2>Design</h2>
+      <p class="muted">Connection Builder — configure entities and relationships in Phase 2.</p>
+      <div class="placeholder-card">
+        <strong>Schema summary</strong>
+        <dl id="schema-summary"></dl>
+        <strong>Entities</strong>
+        <ul class="entity-list" id="entity-list"></ul>
+      </div>
+    </section>
+
+    <p class="status" id="load-status">Loading schema…</p>
+  </main>
+
+  <script type="module" src="/static/js/editor.js"></script>
+</body>
+</html>
