@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arc.example/schemas/knowledge-site/v1/examples/mind-map.schema.json",
+  "title": "Mind Map Canvas — Example Site Schema",
+  "description": "Example configuration for a mind-mapping / visual knowledge canvas. Extends base primitives with graph layout, node links, and a graph view. Uses the same local-first → JSON publish → GitHub Pages pattern as the base schema.",
+  "version": "1.0.0",
+  "extends": "../site.schema.json",
+  "site": {
+    "id": "research-mind-map",
+    "title": "Research Mind Map",
+    "subtitle": "Visual knowledge canvas with tags and references",
+    "port": 8772,
+    "logo": "canvas-logo.png",
+    "repo_subpath": "research-mind-map",
+    "pages_target_folder": "research-mind-map",
+    "public_url": "https://example.pages.github.io/research-mind-map/"
+  },
+  "entity_types": {
+    "canvas": {
+      "label": "Canvas",
+      "label_plural": "Canvases",
+      "table": "canvases",
+      "primary_key": "id",
+      "description": "A mind-map workspace (equivalent to checklist in base schema).",
+      "km_analogue": "Board / canvas / graph",
+      "replaces": "checklist",
+      "fields": {
+        "id": { "type": "string", "required": true, "publish": true },
+        "title": { "type": "string", "required": true, "publish": true },
+        "description": { "type": "text", "publish": true },
+        "updated": { "type": "date", "publish": true, "auto_on_export": true },
+        "default_layout": {
+          "type": "enum",
+          "options": ["force", "tree", "radial", "manual"],
+          "default": "force"
+        }
+      }
+    },
+    "node": {
+      "label": "Node",
+      "label_plural": "Nodes",
+      "table": "nodes",
+      "primary_key": ["canvas_id", "id"],
+      "description": "A node on the canvas (equivalent to item in base schema).",
+      "km_analogue": "Concept / note / idea",
+      "replaces": "item",
+      "fields": {
+        "canvas_id": {
+          "type": "string",
+          "required": true,
+          "foreign_key": "canvases.id",
+          "publish": true
+        },
+        "id": { "type": "string", "required": true, "publish": true },
+        "label": {
+          "type": "string",
+          "required": true,
+          "label": "Label",
+          "maps_from_base": "aspect",
+          "publish": true,
+          "public_display": true
+        },
+        "body": {
+          "type": "bullet_list",
+          "separator": "\u001e",
+          "label": "Body",
+          "maps_from_base": "notes",
+          "publish": true
+        },
+        "parent_id": {
+          "type": "string",
+          "nullable": true,
+          "foreign_key": "nodes.id",
+          "description": "Tree parent for outline/hierarchy layout",
+          "publish": true
+        },
+        "position_x": { "type": "float", "default": 0, "publish": true },
+        "position_y": { "type": "float", "default": 0, "publish": true },
+        "collapsed": { "type": "boolean", "default": false, "publish": true },
+        "color": { "type": "string", "publish": true },
+        "status": {
+          "type": "enum",
+          "options": ["idea", "exploring", "validated", "archived"],
+          "default": "idea",
+          "publish": true
+        },
+        "references": {
+          "type": "multiline_text",
+          "label": "References",
+          "denormalized_from": "resource_tags",
+          "maps_from_base": "resources",
+          "publish": true
+        },
+        "owner": {
+          "type": "string",
+          "denormalized_from": "poc_tags",
+          "maps_from_base": "poc",
+          "publish": true
+        }
+      }
+    },
+    "node_link": {
+      "label": "Link",
+      "label_plural": "Links",
+      "table": "node_links",
+      "primary_key": "id",
+      "description": "Directed edge between two nodes (graph-specific primitive).",
+      "fields": {
+        "id": { "type": "string", "required": true, "publish": true },
+        "canvas_id": { "type": "string", "required": true, "publish": true },
+        "from_node_id": { "type": "string", "required": true, "publish": true },
+        "to_node_id": { "type": "string", "required": true, "publish": true },
+        "link_type": {
+          "type": "enum",
+          "options": ["relates", "supports", "blocks", "parent_of", "inspired_by"],
+          "default": "relates",
+          "publish": true
+        },
+        "label": { "type": "string", "publish": true }
+      }
+    },
+    "resource": {
+      "label": "Reference",
+      "label_plural": "References",
+      "fields": {
+        "type": {
+          "options": [
+            "Article",
+            "Book",
+            "Video",
+            "Internal doc",
+            "Interview",
+            "Dataset",
+            "Other"
+          ]
+        }
+      }
+    },
+    "theme": {
+      "label": "Cluster",
+      "label_plural": "Clusters",
+      "description": "Visual/thematic grouping — maps to theme in base schema."
+    },
+    "poc": {
+      "label": "Owner",
+      "label_plural": "Owners"
+    },
+    "question": {
+      "label": "Open question",
+      "table": "node_questions",
+      "fields": {
+        "node_id": { "type": "string", "maps_from_base": "item_id" },
+        "canvas_id": { "type": "string", "maps_from_base": "checklist_id" }
+      }
+    }
+  },
+  "relationships": [
+    {
+      "id": "canvas_contains_node",
+      "from": "canvas",
+      "to": "node",
+      "type": "containment",
+      "cardinality": "1:N",
+      "storage": { "foreign_key": "nodes.canvas_id" },
+      "maps_from_base": "checklist_contains_item"
+    },
+    {
+      "id": "node_parent_child",
+      "from": "node",
+      "to": "node",
+      "type": "hierarchy",
+      "cardinality": "1:N",
+      "storage": { "foreign_key": "nodes.parent_id", "on_delete": "SET NULL" },
+      "publish": true,
+      "editor": { "drag_reparent": true, "layout": "tree" },
+      "note": "Replaces sub_items JSON for true tree editing."
+    },
+    {
+      "id": "node_links_node",
+      "from": "node",
+      "to": "node",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "node_links",
+        "keys": ["from_node_id", "to_node_id", "link_type"],
+        "entity": "node_link"
+      },
+      "publish": true,
+      "editor": { "draw_edge": true, "edge_labels": true }
+    },
+    {
+      "id": "resource_tags_node",
+      "from": "resource",
+      "to": "node",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "resource_tags",
+        "keys": ["resource_id", "canvas_id", "node_id"]
+      },
+      "maps_from_base": "resource_tags_item"
+    },
+    {
+      "id": "theme_tags_node",
+      "from": "theme",
+      "to": "node",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "node_themes",
+        "keys": ["canvas_id", "node_id", "theme_id"]
+      },
+      "maps_from_base": "theme_tags_item",
+      "editor": { "color_branch_by_cluster": true }
+    },
+    {
+      "id": "question_belongs_node",
+      "from": "question",
+      "to": "node",
+      "type": "containment",
+      "cardinality": "N:1",
+      "maps_from_base": "question_belongs_item"
+    }
+  ],
+  "views": [
+    {
+      "id": "graph_canvas",
+      "type": "graph",
+      "entity": "node",
+      "edge_entity": "node_link",
+      "label": "Canvas",
+      "library": "cytoscape",
+      "features": [
+        "pan_zoom",
+        "drag_nodes",
+        "draw_edges",
+        "collapse_subtree",
+        "search_highlight",
+        "filter_by_cluster"
+      ],
+      "publish": true,
+      "public_file": "index.html"
+    },
+    {
+      "id": "outline_sidebar",
+      "type": "tree",
+      "entity": "node",
+      "label": "Outline",
+      "source_field": "parent_id",
+      "publish": false,
+      "editor_only": true
+    },
+    {
+      "id": "references_catalog",
+      "type": "catalog",
+      "entity": "resource",
+      "label": "References",
+      "maps_from_base": "resources_catalog"
+    },
+    {
+      "id": "clusters_catalog",
+      "type": "catalog",
+      "entity": "theme",
+      "label": "Clusters",
+      "maps_from_base": "themes_catalog"
+    },
+    {
+      "id": "questions_panel",
+      "type": "aggregate",
+      "entity": "question",
+      "label": "Open questions",
+      "maps_from_base": "questions_aggregate"
+    }
+  ],
+  "publish_manifest": {
+    "files": [
+      {
+        "path": "data/{canvas_id}.json",
+        "entities": ["canvas", "node", "node_link"],
+        "node_fields": [
+          "id",
+          "label",
+          "body",
+          "parent_id",
+          "position_x",
+          "position_y",
+          "collapsed",
+          "color",
+          "status",
+          "references",
+          "owner",
+          "clusters"
+        ],
+        "links_array": "links"
+      },
+      {
+        "path": "data/references.json",
+        "entities": ["resource"],
+        "maps_from_base": "data/resources.json"
+      },
+      {
+        "path": "data/clusters.json",
+        "entities": ["theme"],
+        "maps_from_base": "data/themes.json"
+      }
+    ],
+    "static_assets": ["index.html", "styles.css", "graph.js", "canvas-logo.png"]
+  },
+  "example_seed": {
+    "id": "product-strategy-2026",
+    "title": "Product Strategy 2026",
+    "nodes": [
+      {
+        "id": "root",
+        "label": "AI Product Strategy",
+        "position_x": 400,
+        "position_y": 300,
+        "clusters": ["Strategy"]
+      },
+      {
+        "id": "n1",
+        "label": "Customer trust",
+        "parent_id": "root",
+        "position_x": 200,
+        "position_y": 150,
+        "clusters": ["Privacy", "Governance"]
+      },
+      {
+        "id": "n2",
+        "label": "Model risk",
+        "parent_id": "root",
+        "position_x": 600,
+        "position_y": 150,
+        "clusters": ["Model Risk"]
+      }
+    ],
+    "links": [
+      { "from": "n1", "to": "n2", "link_type": "relates", "label": "shared controls" }
+    ]
+  },
+  "modules": {
+    "resource": { "enabled": true, "label": "References" },
+    "theme": { "enabled": true, "label": "Clusters" },
+    "poc": { "enabled": true, "label": "Owners" },
+    "question": { "enabled": true, "label": "Open questions", "publish": false },
+    "rcm": { "enabled": false },
+    "node_link": { "enabled": true, "required": true },
+    "github_issue_sync": { "enabled": false }
+  },
+  "editor_ux": {
+    "primary_view": "graph_canvas",
+    "secondary_panels": ["outline_sidebar", "references_catalog", "clusters_catalog"],
+    "node_inspector_fields": ["label", "body", "status", "owner", "references", "clusters"],
+    "context_menu": [
+      "add_child_node",
+      "add_linked_node",
+      "tag_reference",
+      "assign_owner",
+      "add_question",
+      "collapse_subtree"
+    ]
+  }
+}

@@ -1,0 +1,318 @@
+{
+  "$schema": "https://arc.example/schemas/knowledge-site/v1/site.schema.json",
+  "schema_version": "1.1",
+  "title": "Tagged Knowledge Base — minimal worked package",
+  "description": "Local-only notes app: notebook, note, reference, tag. Demonstrates containment, junction, projection, grid + catalog views, JSON + XLSX export.",
+
+  "site": {
+    "id": "research-notes",
+    "title": "Research Notes",
+    "subtitle": "Local knowledge base with references and tags",
+    "port": 8771,
+    "deployment": {
+      "mode": "local_only"
+    }
+  },
+
+  "storage": {
+    "local_db": "planning.db",
+    "published_dir": "data",
+    "seed_direction": "json_to_db",
+    "export_direction": "db_to_json"
+  },
+
+  "format_conventions": {
+    "bullet_separator": "\u001e",
+    "projection_separators": {
+      "label_value": " — ",
+      "meta": " · "
+    }
+  },
+
+  "entity_types": {
+    "notebook": {
+      "primitive": "container",
+      "label": "Notebook",
+      "label_plural": "Notebooks",
+      "table": "notebooks",
+      "primary_key": "id",
+      "fields": {
+        "id": {
+          "type": "string",
+          "sqlite": { "column": "TEXT", "nullable": false, "primary_key": true },
+          "required": true,
+          "publish": true
+        },
+        "title": {
+          "type": "text",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "required": true,
+          "publish": true
+        },
+        "updated": {
+          "type": "date",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "publish": true,
+          "auto_on_export": true
+        }
+      }
+    },
+
+    "note": {
+      "primitive": "primary_row",
+      "label": "Note",
+      "label_plural": "Notes",
+      "table": "notes",
+      "primary_key": ["notebook_id", "id"],
+      "fields": {
+        "notebook_id": {
+          "type": "foreign_key",
+          "ref": "notebooks.id",
+          "sqlite": { "column": "TEXT", "nullable": false, "primary_key": true },
+          "publish": true
+        },
+        "id": {
+          "type": "integer",
+          "sqlite": { "column": "INTEGER", "nullable": false, "primary_key": true },
+          "required": true,
+          "publish": true
+        },
+        "title": {
+          "type": "text",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "editor": { "column": true, "order": 1, "header": "Title" },
+          "publish": true
+        },
+        "body": {
+          "type": "bullet_list",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "serialize": { "separator": "\u001e" },
+          "editor": { "column": true, "order": 3, "header": "Body" },
+          "publish": true
+        },
+        "references": {
+          "type": "multiline_text",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "projection_target": true,
+          "editor": { "column": true, "order": 4, "header": "References", "widget": "box_stack" },
+          "publish": true
+        },
+        "status": {
+          "type": "enum",
+          "options": ["draft", "active", "archived"],
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "'draft'" },
+          "editor": { "column": false },
+          "publish": true
+        }
+      }
+    },
+
+    "reference": {
+      "primitive": "catalog_entry",
+      "label": "Reference",
+      "label_plural": "References",
+      "table": "references",
+      "primary_key": "id",
+      "fields": {
+        "id": {
+          "type": "string",
+          "sqlite": { "column": "TEXT", "nullable": false, "primary_key": true },
+          "required": true,
+          "publish": true
+        },
+        "title": {
+          "type": "text",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "required": true,
+          "publish": true
+        },
+        "link": {
+          "type": "url",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "required": true,
+          "publish": true
+        },
+        "type": {
+          "type": "enum",
+          "options": ["Article", "Book", "Video", "Internal doc", "Other"],
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "publish": true
+        },
+        "summary": {
+          "type": "longtext",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "publish": true
+        },
+        "created_at": {
+          "type": "date",
+          "sqlite": { "column": "TEXT", "nullable": true },
+          "publish": true,
+          "publish_as": "created"
+        }
+      }
+    },
+
+    "tag": {
+      "primitive": "catalog_entry",
+      "label": "Tag",
+      "label_plural": "Tags",
+      "table": "tags",
+      "primary_key": "id",
+      "fields": {
+        "id": {
+          "type": "string",
+          "sqlite": { "column": "TEXT", "nullable": false, "primary_key": true },
+          "required": true,
+          "publish": true
+        },
+        "name": {
+          "type": "text",
+          "sqlite": { "column": "TEXT", "nullable": false, "unique": true },
+          "required": true,
+          "publish": true
+        },
+        "description": {
+          "type": "longtext",
+          "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
+          "publish": true
+        }
+      }
+    }
+  },
+
+  "relationships": [
+    {
+      "id": "notebook_contains_note",
+      "from": "notebook",
+      "to": "note",
+      "cardinality": "1:N",
+      "storage": "containment",
+      "foreign_key": { "table": "notes", "column": "notebook_id", "references": "notebooks.id", "on_delete": "CASCADE" }
+    },
+    {
+      "id": "reference_tags_note",
+      "from": "reference",
+      "to": "note",
+      "cardinality": "M:N",
+      "storage": "junction",
+      "junction": {
+        "table": "reference_tags",
+        "keys": ["reference_id", "notebook_id", "note_id"],
+        "foreign_keys": {
+          "reference_id": "references.id",
+          "notebook_id": "notebooks.id"
+        }
+      },
+      "projection": {
+        "enabled": true,
+        "target_entity": "note",
+        "target_field": "references",
+        "line_format": "{title} — {link}",
+        "optional_meta_format": " ({type})",
+        "sync_triggers": ["tag_save", "row_save"]
+      },
+      "ui": {
+        "catalog_actions": ["open_tag_modal"],
+        "row_actions": ["pick_from_catalog"],
+        "widget": "tag_modal"
+      },
+      "export": { "json": true, "xlsx": "via_projection_and_junction" }
+    },
+    {
+      "id": "tag_tags_note",
+      "from": "tag",
+      "to": "note",
+      "cardinality": "M:N",
+      "storage": "junction",
+      "junction": {
+        "table": "note_tags",
+        "keys": ["tag_id", "notebook_id", "note_id"]
+      },
+      "projection": { "enabled": false },
+      "ui": {
+        "row_actions": ["open_theme_modal"],
+        "widget": "theme_pills"
+      },
+      "export": { "json": "as_names_on_note", "xlsx": "comma_separated" }
+    }
+  ],
+
+  "views": [
+    {
+      "id": "notes_grid",
+      "type": "grid",
+      "entity": "note",
+      "container_entity": "notebook",
+      "label": "Notes",
+      "primary": true,
+      "columns_from_fields": ["title", "body", "references"]
+    },
+    {
+      "id": "references_catalog",
+      "type": "catalog",
+      "entity": "reference",
+      "label": "References",
+      "sort_by": "created_at desc"
+    },
+    {
+      "id": "tags_catalog",
+      "type": "catalog",
+      "entity": "tag",
+      "label": "Tags"
+    }
+  ],
+
+  "actions": [
+    { "id": "autosave_row", "handler": "debounced_patch", "debounce_ms": 600 },
+    { "id": "open_tag_modal", "label": "+ Tag", "handler": "tag_modal", "api": "PUT /api/references/{id}/tags" },
+    { "id": "pick_from_catalog", "label": "Tag catalog", "handler": "pick_catalog", "api": "POST /api/notes/{id}/tag-reference" },
+    { "id": "open_theme_modal", "label": "Edit tags", "handler": "theme_modal", "api": "PUT /api/notes/{id}/tags" },
+    { "id": "export_json", "label": "Export JSON", "handler": "export_json", "api": "GET /api/export/json.zip" },
+    { "id": "export_xlsx", "label": "Export XLSX", "handler": "export_xlsx", "api": "GET /api/export/xlsx" }
+  ],
+
+  "export_profiles": {
+    "json": {
+      "enabled": true,
+      "browser_download": true,
+      "format": "zip",
+      "files": [
+        { "path": "data/{notebook_id}.json", "entities": ["notebook", "note"], "include_tag_names_on_notes": true },
+        { "path": "data/references.json", "entities": ["reference"], "include_junctions": ["reference_tags"] },
+        { "path": "data/tags.json", "entities": ["tag"], "include_junctions": ["note_tags"] }
+      ]
+    },
+    "xlsx": {
+      "enabled": true,
+      "browser_download": true,
+      "sheets": ["Notes", "References", "Tags"]
+    },
+    "sqlite_backup": {
+      "enabled": true,
+      "file": "planning.db",
+      "note": "Full fidelity — copy file directly"
+    }
+  },
+
+  "seed": {
+    "notebooks": [
+      {
+        "id": "main",
+        "title": "Main Notebook",
+        "notes": [
+          {
+            "id": 1,
+            "title": "Getting started",
+            "body": ["Use Tag catalog to link references", "Use Edit tags for clusters"],
+            "status": "active",
+            "tags": ["Ideas"]
+          }
+        ]
+      }
+    ],
+    "references": [],
+    "tags": [
+      { "id": "tag-ideas", "name": "Ideas", "description": "" }
+    ]
+  }
+}

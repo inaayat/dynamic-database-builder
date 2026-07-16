@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Knowledge Site Template</title>
+<style>
+  @page { margin: 18mm; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.45;
+    color: #1a1a1a;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  h1 { font-size: 22pt; border-bottom: 2px solid #1e3a5f; padding-bottom: 8px; color: #1e3a5f; }
+  h2 { font-size: 15pt; margin-top: 24px; color: #1e3a5f; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+  h3 { font-size: 12pt; margin-top: 18px; color: #334155; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 10pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f1f5f9; font-weight: 600; }
+  code { font-family: Menlo, Monaco, Consolas, monospace; font-size: 9pt; background: #f8fafc; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 9pt; line-height: 1.35; }
+  pre code { background: none; padding: 0; }
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }
+  strong { color: #0f172a; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<h1 id="knowledge-site-template">Knowledge Site Template</h1>
+<p><strong>Architecture guide, relationship model, and schema reference</strong></p>
+<p>Derived from the compliance audit reference pattern<br />
+Generated: July 15, 2026</p>
+<hr />
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p>The AI Governance Audit project is a <strong>local-first, JSON-published, static-site</strong> pattern:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Role</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Working store</td>
+<td>Rich editing, relationships, local-only data</td>
+<td><code>planning.db</code> (gitignored)</td>
+</tr>
+<tr>
+<td>Published store</td>
+<td>Versioned, deployable data</td>
+<td><code>data/*.json</code> (committed)</td>
+</tr>
+<tr>
+<td>Presentation</td>
+<td>Read-only dashboard + contribution entry points</td>
+<td><code>index.html</code> on GitHub Pages</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Data flow:</strong></p>
+<pre><code>planning.db  →  export  →  data/*.json  →  git push  →  GitHub Pages
+     ↑                           ↑
+  run.py / edit.html        sync.py (GitHub Issues)
+</code></pre>
+<p>To templatize for note-taking or mind-mapping, declare entities and relationships in <code>site.schema.json</code> — not in domain-specific Python/HTML.</p>
+<p><strong>Bundled files:</strong></p>
+<ul>
+<li><code>site.schema.json</code> — all primitives from the reference pattern</li>
+<li><code>examples/mind-map.schema.json</code> — graph canvas example</li>
+</ul>
+<hr />
+<h2 id="2-entity-types-the-nouns">2. Entity types (the nouns)</h2>
+<table>
+<thead>
+<tr>
+<th>Entity</th>
+<th>Table</th>
+<th>Role</th>
+<th>KM / mind-map analogue</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Checklist</strong></td>
+<td><code>checklists</code></td>
+<td>Container for structured items</td>
+<td>Notebook, canvas, outline</td>
+</tr>
+<tr>
+<td><strong>Item</strong></td>
+<td><code>items</code></td>
+<td>Primary row you track</td>
+<td>Note, node, task, concept</td>
+</tr>
+<tr>
+<td><strong>Resource</strong></td>
+<td><code>resources</code></td>
+<td>Reusable reference (URL, doc)</td>
+<td>Citation, backlink, attachment</td>
+</tr>
+<tr>
+<td><strong>POC</strong></td>
+<td><code>pocs</code></td>
+<td>Reusable person/team contact</td>
+<td>Author, owner, assignee</td>
+</tr>
+<tr>
+<td><strong>Theme</strong></td>
+<td><code>themes</code></td>
+<td>Cross-cutting label</td>
+<td>Tag, MOC, cluster, branch</td>
+</tr>
+<tr>
+<td><strong>Question</strong></td>
+<td><code>item_questions</code></td>
+<td>Open thread on one item</td>
+<td>TODO, open question</td>
+</tr>
+<tr>
+<td><strong>RCM Risk</strong></td>
+<td><code>rcm_risks</code></td>
+<td>Standalone risk record</td>
+<td>Decision, concern</td>
+</tr>
+<tr>
+<td><strong>RCM Control</strong></td>
+<td><code>rcm_controls</code></td>
+<td>Child of a risk</td>
+<td>Mitigation, action</td>
+</tr>
+<tr>
+<td><strong>GitHub Issue</strong></td>
+<td>external</td>
+<td>Contributor submission</td>
+<td>External intake form</td>
+</tr>
+</tbody>
+</table>
+<h3 id="embedded-structure-on-items-not-separate-entities">Embedded structure on items (not separate entities)</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Storage</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sub_items</code></td>
+<td>JSON array in text column</td>
+<td>Child bullets under aspect (tree fragment)</td>
+</tr>
+<tr>
+<td><code>notes</code></td>
+<td>Text, bullets separated by <code>\x1e</code></td>
+<td>Inline body / scratchpad</td>
+</tr>
+<tr>
+<td><code>resources</code></td>
+<td>Multiline text</td>
+<td>Denormalized display of linked resources</td>
+</tr>
+<tr>
+<td><code>poc</code></td>
+<td>Single formatted string</td>
+<td>Denormalized display of linked POC</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-relationship-storage-patterns">3. Relationship storage patterns</h2>
+<p>Relationships use <strong>five storage patterns</strong>. This is the key to templatizing.</p>
+<h3 id="pattern-a-containment-parent-children">Pattern A — Containment (parent → children)</h3>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Cardinality</th>
+<th>Storage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Checklist</td>
+<td>Item</td>
+<td>1:N</td>
+<td><code>items.checklist_id</code> FK</td>
+</tr>
+<tr>
+<td>RCM Risk</td>
+<td>RCM Control</td>
+<td>1:N</td>
+<td><code>rcm_controls.risk_id</code> FK</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pattern-b-junction-tables-many-to-many">Pattern B — Junction tables (many-to-many)</h3>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Junction table</th>
+<th>Keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resource</td>
+<td>Item</td>
+<td><code>resource_tags</code></td>
+<td><code>(resource_id, checklist_id, item_id)</code></td>
+</tr>
+<tr>
+<td>POC</td>
+<td>Item</td>
+<td><code>poc_tags</code></td>
+<td><code>(poc_id, checklist_id, item_id)</code></td>
+</tr>
+<tr>
+<td>Theme</td>
+<td>Item</td>
+<td><code>item_themes</code></td>
+<td><code>(checklist_id, item_id, theme_id)</code></td>
+</tr>
+<tr>
+<td>Theme</td>
+<td>Resource</td>
+<td><code>resource_themes</code></td>
+<td><code>(resource_id, theme_id)</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Theme is a hub tag</strong> — links to both primary content (items) and catalog entries (resources).</p>
+<h3 id="pattern-c-denormalized-projection-catalog-item-text">Pattern C — Denormalized projection (catalog ↔ item text)</h3>
+<table>
+<thead>
+<tr>
+<th>Catalog</th>
+<th>Item field</th>
+<th>Sync</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resource</td>
+<td><code>items.resources</code></td>
+<td>Tag appends formatted line; save upserts catalog</td>
+</tr>
+<tr>
+<td>POC</td>
+<td><code>items.poc</code></td>
+<td>Tag sets formatted line; save upserts catalog</td>
+</tr>
+</tbody>
+</table>
+<p>Format conventions:
+- Resource: <code>Title — URL (type · submitter) — summary</code>
+- POC: <code>Team — Name · Role</code></p>
+<p>Public <code>index.html</code> reads simple JSON strings, not junction tables.</p>
+<h3 id="pattern-d-assignment-entry-catalog-optional">Pattern D — Assignment (entry → catalog, optional)</h3>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Question</td>
+<td>POC</td>
+<td><code>item_questions.poc_id</code></td>
+</tr>
+<tr>
+<td>Resource</td>
+<td>GitHub Issue</td>
+<td><code>resources.issue_number</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pattern-e-provenance-derived-no-db-fk">Pattern E — Provenance / derived (no DB FK)</h3>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GitHub Issue</td>
+<td>Item / Resource</td>
+<td><code>sync.py</code> patches JSON</td>
+</tr>
+<tr>
+<td>Item</td>
+<td>RCM Risk</td>
+<td>UI copies aspect + notes ("+ Add risk")</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-complete-relationship-matrix">4. Complete relationship matrix</h2>
+<pre><code>                    Item    Resource   POC    Theme   Question   Risk   Control   Checklist   Issue
+Item                  —       M:N       M:N     M:N      1:N        —       —        N:1        —
+Resource             M:N       —         —      M:N       —        —       —         —        N:1
+POC                  M:N       —         —       —       N:1        —       —         —        —
+Theme                M:N      M:N        —       —        —        —       —         —        —
+Question             1:N       —        N:1      —        —        —       —         —        —
+Risk                  —        —         —       —        —        —       1:N       —        —
+Control               —        —         —       —        —       N:1      —         —        —
+Checklist            1:N       —         —       —        —        —       —         —        —
+Issue                 —       1:N        —       —        —        —       —         —        —
+
+Plus:
+  Resource ──projects──► Item.resources (text)
+  POC      ──projects──► Item.poc (text)
+  Item.sub_items[]     (embedded children)
+</code></pre>
+<hr />
+<h2 id="5-editor-ux-primitives">5. Editor UX primitives</h2>
+<p>The local editor (<code>edit.html</code>) is a <strong>relationship workbench</strong> with 7 tabs:</p>
+<table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Entities</th>
+<th>Relationship actions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Checklist</td>
+<td>Item</td>
+<td>Inline fields; theme pills; notes → questions/RCM; tag resources/POCs</td>
+</tr>
+<tr>
+<td>Resources</td>
+<td>Resource</td>
+<td>Catalog edit; <strong>+ Tag</strong> → junction + mirror to item.resources</td>
+</tr>
+<tr>
+<td>POC</td>
+<td>POC</td>
+<td>Catalog edit; <strong>+ Tag</strong> → junction + mirror to item.poc</td>
+</tr>
+<tr>
+<td>Themes</td>
+<td>Theme</td>
+<td>Link items and resources from theme view</td>
+</tr>
+<tr>
+<td>Questions</td>
+<td>Question</td>
+<td>Aggregated view; optional POC assignee</td>
+</tr>
+<tr>
+<td>RCM</td>
+<td>Risk → Control</td>
+<td>Standalone matrix; no item FK</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reusable-ux-building-blocks">Reusable UX building blocks</h3>
+<ol>
+<li><strong>Catalog tab</strong> — manage reusable entities</li>
+<li><strong>Primary grid</strong> — edit main entity with inline fields</li>
+<li><strong>Tag modal</strong> — many-to-many picker</li>
+<li><strong>Projection sync</strong> — junction + inline field stay in sync</li>
+<li><strong>Derived action</strong> — create related entity from context (no FK)</li>
+<li><strong>Publish boundary</strong> — local-only modules excluded from JSON export</li>
+</ol>
+<hr />
+<h2 id="6-publish-manifest">6. Publish manifest</h2>
+<h3 id="published-to-datajson">Published to <code>data/*.json</code></h3>
+<ul>
+<li>Checklist items + theme names on items</li>
+<li>Resources + tags + themes</li>
+<li>Themes + junction tables</li>
+</ul>
+<h3 id="local-only-in-planningdb">Local-only in <code>planning.db</code></h3>
+<ul>
+<li>RCM (risks/controls) — Excel export only</li>
+<li>Questions — editor/API only</li>
+<li>Full POC catalog structure — only <code>poc</code> string on items in JSON</li>
+</ul>
+<hr />
+<h2 id="7-template-packages-preset-bundles">7. Template packages (preset bundles)</h2>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Entities</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>outline_notes</strong></td>
+<td>Checklist, Item</td>
+<td>Simple nested notes</td>
+</tr>
+<tr>
+<td><strong>tagged_knowledge_base</strong></td>
+<td>+ Resource, Theme</td>
+<td>Zettelkasten-style KB</td>
+</tr>
+<tr>
+<td><strong>owned_project_tracker</strong></td>
+<td>+ POC, Question</td>
+<td>Owned tasks with open threads</td>
+</tr>
+<tr>
+<td><strong>audit_compliance</strong></td>
+<td>+ RCM, GitHub intake</td>
+<td>Full compliance audit pattern</td>
+</tr>
+<tr>
+<td><strong>mind_map_canvas</strong></td>
+<td>Canvas, Node, NodeLink, Theme</td>
+<td>Visual graph (see example schema)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-site-builder-ux-how-users-assemble-solutions">8. Site builder UX (how users assemble solutions)</h2>
+<h3 id="step-1-choose-primary-entity-view">Step 1 — Choose primary entity + view</h3>
+<table>
+<thead>
+<tr>
+<th>Use case</th>
+<th>Primary entity</th>
+<th>View</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Checklist / audit</td>
+<td>Item</td>
+<td>Table</td>
+</tr>
+<tr>
+<td>Note-taking</td>
+<td>Item = note</td>
+<td>Table or cards</td>
+</tr>
+<tr>
+<td>Outline</td>
+<td>Item + sub_items</td>
+<td>Tree</td>
+</tr>
+<tr>
+<td>Mind map</td>
+<td>Node</td>
+<td>Graph canvas</td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-2-enable-modules-checkboxes">Step 2 — Enable modules (checkboxes)</h3>
+<ul>
+<li>Resources / References</li>
+<li>Themes / Tags / Clusters</li>
+<li>POCs / Owners</li>
+<li>Questions (local only)</li>
+<li>RCM / Risks (local only)</li>
+<li>GitHub Issue sync</li>
+</ul>
+<h3 id="step-3-wire-relationships">Step 3 — Wire relationships</h3>
+<p>Per relationship row: cardinality, storage style (junction | inline | embedded | FK), publish flag.</p>
+<h3 id="step-4-field-schema-designer">Step 4 — Field schema designer</h3>
+<p>Field types: <code>text</code>, <code>longtext</code>, <code>bullets</code>, <code>children</code>, <code>enum</code>, <code>date</code>, <code>number</code>, <code>position_x/y</code>.</p>
+<h3 id="step-5-view-designer">Step 5 — View designer</h3>
+<p>Table, catalog, aggregate, hierarchy, <strong>graph</strong> (mind maps).</p>
+<h3 id="step-6-contribution-forms-optional">Step 6 — Contribution forms (optional)</h3>
+<p>GitHub Issue field → relationship mapping.</p>
+<hr />
+<h2 id="9-mind-map-extensions-example-schema">9. Mind map extensions (example schema)</h2>
+<p>The base schema lacks graph primitives. The mind-map example adds:</p>
+<table>
+<thead>
+<tr>
+<th>Addition</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nodes.parent_id</code></td>
+<td>True tree (replaces <code>sub_items</code>)</td>
+</tr>
+<tr>
+<td><code>node_links</code> table</td>
+<td>Free-form edges with <code>link_type</code></td>
+</tr>
+<tr>
+<td><code>position_x</code>, <code>position_y</code></td>
+<td>Layout persistence</td>
+</tr>
+<tr>
+<td><code>collapsed</code>, <code>color</code></td>
+<td>Visual state</td>
+</tr>
+<tr>
+<td>Graph view (Cytoscape)</td>
+<td>Primary editor</td>
+</tr>
+</tbody>
+</table>
+<p>Everything else ports directly: tags → clusters, resources → references, POC → owners.</p>
+<h3 id="example-seed-structure">Example seed structure</h3>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;product-strategy-2026&quot;,
+  &quot;title&quot;: &quot;Product Strategy 2026&quot;,
+  &quot;nodes&quot;: [
+    { &quot;id&quot;: &quot;root&quot;, &quot;label&quot;: &quot;AI Product Strategy&quot;, &quot;position_x&quot;: 400, &quot;position_y&quot;: 300 },
+    { &quot;id&quot;: &quot;n1&quot;, &quot;label&quot;: &quot;Customer trust&quot;, &quot;parent_id&quot;: &quot;root&quot;, &quot;clusters&quot;: [&quot;Privacy&quot;] }
+  ],
+  &quot;links&quot;: [
+    { &quot;from&quot;: &quot;n1&quot;, &quot;to&quot;: &quot;n2&quot;, &quot;link_type&quot;: &quot;relates&quot;, &quot;label&quot;: &quot;shared controls&quot; }
+  ]
+}
+</code></pre>
+<hr />
+<h2 id="10-schema-file-reference">10. Schema file reference</h2>
+<h3 id="siteschemajson-sections"><code>site.schema.json</code> sections</h3>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>site</code></td>
+<td>id, title, port, URLs</td>
+</tr>
+<tr>
+<td><code>storage</code></td>
+<td>DB path, published dir, seed/export direction</td>
+</tr>
+<tr>
+<td><code>relationship_storage_patterns</code></td>
+<td>Seven pattern definitions</td>
+</tr>
+<tr>
+<td><code>entity_types</code></td>
+<td>All 8 entities with fields and publish flags</td>
+</tr>
+<tr>
+<td><code>relationships</code></td>
+<td>16 enumerated relationships with storage + editor hooks</td>
+</tr>
+<tr>
+<td><code>relationship_matrix</code></td>
+<td>Quick-reference matrix</td>
+</tr>
+<tr>
+<td><code>checklist_variants</code></td>
+<td>IIA vs NIST column differences</td>
+</tr>
+<tr>
+<td><code>views</code></td>
+<td>Table, catalog, aggregate, hierarchy</td>
+</tr>
+<tr>
+<td><code>publish_manifest</code></td>
+<td>What lands in git vs stays local</td>
+</tr>
+<tr>
+<td><code>editor_ux_primitives</code></td>
+<td>Reusable UI patterns</td>
+</tr>
+<tr>
+<td><code>intake_forms</code></td>
+<td>GitHub Issue field mappings</td>
+</tr>
+<tr>
+<td><code>workflows</code></td>
+<td>Pages deploy + issue sync</td>
+</tr>
+<tr>
+<td><code>template_packages</code></td>
+<td>Preset bundles</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examplesmind-mapschemajson-sections"><code>examples/mind-map.schema.json</code> sections</h3>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>extends</code></td>
+<td>Points to base schema</td>
+</tr>
+<tr>
+<td><code>entity_types</code></td>
+<td>canvas, node, node_link (replaces checklist/item)</td>
+</tr>
+<tr>
+<td><code>relationships</code></td>
+<td>parent/child tree + graph edges</td>
+</tr>
+<tr>
+<td><code>views</code></td>
+<td>graph_canvas, outline_sidebar</td>
+</tr>
+<tr>
+<td><code>publish_manifest</code></td>
+<td>Canvas JSON with nodes + links arrays</td>
+</tr>
+<tr>
+<td><code>modules</code></td>
+<td>RCM disabled; node_link required</td>
+</tr>
+<tr>
+<td><code>editor_ux</code></td>
+<td>Graph-first with inspector panel</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11-codegen-runtime-next-steps">11. Codegen / runtime next steps</h2>
+<p>A generator or thin generic runtime would read <code>site.schema.json</code> and emit:</p>
+<ol>
+<li>SQLite schema + migrations (<code>db.py</code>)</li>
+<li>FastAPI routes per entity/relationship</li>
+<li>Editor tabs from <code>views</code> + <code>editor_ux_primitives</code></li>
+<li>Export/import for <code>publish_manifest</code></li>
+<li>GitHub workflows from <code>workflows</code> + <code>intake_forms</code></li>
+<li>Public <code>index.html</code> for views marked <code>publish: true</code></li>
+</ol>
+<p>A single-site compliance audit implementation is effectively <strong>hand-written codegen output</strong> for one instance of this schema.</p>
+<hr />
+<h2 id="appendix-a-item-field-catalog">Appendix A — Item field catalog</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Published</th>
+<th>Public dashboard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>aspect</td>
+<td>text</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>description</td>
+<td>text</td>
+<td>yes</td>
+<td>NIST only</td>
+</tr>
+<tr>
+<td>sub_items</td>
+<td>json_array</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>notes</td>
+<td>bullet_list</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>resources</td>
+<td>multiline</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>poc</td>
+<td>string</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>maturity</td>
+<td>enum</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>status</td>
+<td>enum</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>due_date</td>
+<td>date</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>effort_hours</td>
+<td>float</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>themes</td>
+<td>via junction</td>
+<td>yes</td>
+<td>no (editor only)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="appendix-b-api-surface">Appendix B — API surface (compliance audit pattern)</h2>
+<p>Grouped by relationship primitive:</p>
+<ul>
+<li><strong>Items CRUD</strong>: <code>GET/PATCH /api/items</code></li>
+<li><strong>Resource catalog + tags</strong>: <code>/api/resources</code>, <code>/api/resources/{id}/tags</code>, <code>POST /api/items/{id}/tag-resource</code></li>
+<li><strong>POC catalog + tags</strong>: <code>/api/pocs</code>, <code>/api/pocs/{id}/tags</code>, <code>POST /api/items/{id}/tag-poc</code></li>
+<li><strong>Themes</strong>: <code>/api/themes</code>, <code>/api/items/{id}/themes</code>, <code>/api/resources/{id}/themes</code></li>
+<li><strong>Questions</strong>: <code>/api/questions</code>, <code>/api/items/{id}/questions</code></li>
+<li><strong>RCM</strong>: <code>/api/rcm/*</code></li>
+<li><strong>Publish</strong>: <code>POST /api/export</code>, <code>POST /api/publish</code>, <code>GET /api/export/xlsx</code></li>
+</ul>
+<hr />
+<p><em>End of document</em></p>
+</body>
+</html>

@@ -1,0 +1,693 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arc.example/schemas/knowledge-site/v1/site.schema.json",
+  "title": "Knowledge Site Template — Base Schema",
+  "description": "Reusable primitives for schema-driven knowledge sites. Declares entities, fields, relationships, views, publish rules, and contributor intake. A codegen step or generic runtime can emit db.py, API routes, editor tabs, and GitHub workflows from this file.",
+  "version": "1.0.0",
+  "site": {
+    "id": "my-knowledge-site",
+    "title": "My Knowledge Site",
+    "subtitle": "Local-first planning and public dashboard",
+    "port": 8770,
+    "logo": "arc-logo.png",
+    "repo_subpath": "my-knowledge-site",
+    "pages_target_folder": "my-knowledge-site",
+    "public_url": "https://example.pages.github.io/my-knowledge-site/"
+  },
+  "storage": {
+    "local_db": "planning.db",
+    "published_dir": "data",
+    "seed_direction": "json_to_db",
+    "export_direction": "db_to_json",
+    "gitignore": ["planning.db", "__pycache__/", "*.pyc", "*.xlsx"]
+  },
+  "relationship_storage_patterns": {
+    "containment": "Parent entity owns children via FK (checklist→item, risk→control).",
+    "junction": "Many-to-many via junction table with composite keys.",
+    "denormalized_projection": "Catalog tags also mirror formatted text on item fields (resource→item.resources, poc→item.poc). Kept in sync on save/tag.",
+    "assignment": "Optional FK from child entry to catalog (question→poc).",
+    "embedded": "JSON array or delimited text on same row (sub_items, notes bullets).",
+    "provenance": "External intake writes published JSON without DB FK (github_issue→resource).",
+    "derived_action": "UI creates related entity from context with no schema FK (item→rcm_risk via '+ Add risk')."
+  },
+  "entity_types": {
+    "checklist": {
+      "label": "Checklist",
+      "label_plural": "Checklists",
+      "table": "checklists",
+      "primary_key": "id",
+      "description": "Container for a structured list of items (notebook, outline, audit framework).",
+      "km_analogue": "Notebook / canvas / outline",
+      "fields": {
+        "id": { "type": "string", "required": true, "publish": true },
+        "title": { "type": "string", "required": true, "publish": true },
+        "source": { "type": "string", "publish": true },
+        "updated": { "type": "date", "publish": true, "auto_on_export": true }
+      },
+      "modules": { "enabled_by_default": true, "required": true }
+    },
+    "item": {
+      "label": "Item",
+      "label_plural": "Items",
+      "table": "items",
+      "primary_key": ["checklist_id", "id"],
+      "description": "Primary row — the thing you track, edit, and relate to catalogs.",
+      "km_analogue": "Note / node / task / concept",
+      "fields": {
+        "checklist_id": {
+          "type": "string",
+          "required": true,
+          "foreign_key": "checklists.id",
+          "publish": true
+        },
+        "id": { "type": "integer", "required": true, "publish": true },
+        "aspect": {
+          "type": "text",
+          "required": true,
+          "label": "Aspect",
+          "editor_column": true,
+          "publish": true,
+          "public_display": true
+        },
+        "description": {
+          "type": "text",
+          "label": "Description",
+          "editor_column": false,
+          "checklist_variant": "nist-ai-rmf-playbook",
+          "publish": true
+        },
+        "sub_items": {
+          "type": "json_array",
+          "default": [],
+          "label": "Sub-items",
+          "embedded_children": true,
+          "publish": true
+        },
+        "notes": {
+          "type": "bullet_list",
+          "separator": "\u001e",
+          "label": "Notes",
+          "editor_column": true,
+          "publish": true
+        },
+        "resources": {
+          "type": "multiline_text",
+          "label": "Resources",
+          "denormalized_from": "resource_tags",
+          "line_format": "{title} — {link} ({type} · {submitted_by}) — {summary}",
+          "editor_column": true,
+          "publish": true,
+          "public_display": true
+        },
+        "poc": {
+          "type": "string",
+          "label": "Point of Contact",
+          "denormalized_from": "poc_tags",
+          "line_format": "{team} — {name} · {role}",
+          "editor_column": true,
+          "publish": true,
+          "public_display": true
+        },
+        "maturity": {
+          "type": "enum",
+          "label": "Maturity",
+          "options": [
+            "Not assessed",
+            "Not started",
+            "In progress",
+            "Substantially complete",
+            "Complete",
+            "Not applicable"
+          ],
+          "publish": true,
+          "public_display": true
+        },
+        "status": {
+          "type": "enum",
+          "options": [
+            "not_started",
+            "in_progress",
+            "blocked",
+            "done",
+            "not_applicable"
+          ],
+          "default": "not_started",
+          "publish": true
+        },
+        "due_date": { "type": "date", "publish": true },
+        "effort_hours": { "type": "float", "publish": true }
+      },
+      "modules": { "enabled_by_default": true, "required": true }
+    },
+    "resource": {
+      "label": "Resource",
+      "label_plural": "Resources",
+      "table": "resources",
+      "primary_key": "id",
+      "description": "Reusable reference entry — URL, document, evidence, citation.",
+      "km_analogue": "Citation / backlink / attachment",
+      "fields": {
+        "id": { "type": "string", "required": true, "publish": true },
+        "title": { "type": "string", "required": true, "publish": true },
+        "type": {
+          "type": "enum",
+          "options": [
+            "Policy / Standard",
+            "Procedure / Runbook",
+            "Evidence / Artifact",
+            "Knowledge Repository",
+            "Training",
+            "Access / Inquiry",
+            "Interview Notes",
+            "Finding / Observation",
+            "External Resource",
+            "Other"
+          ],
+          "publish": true
+        },
+        "link": { "type": "url", "required": true, "publish": true },
+        "summary": { "type": "text", "publish": true },
+        "submitted_by": { "type": "string", "publish": true },
+        "submitted_at": { "type": "datetime", "publish": true },
+        "created_at": { "type": "date", "publish_as": "created" },
+        "checklist_item": {
+          "type": "integer",
+          "description": "Legacy single-item link; prefer resource_tags",
+          "publish": true
+        },
+        "issue_number": {
+          "type": "integer",
+          "description": "Provenance from GitHub Issue sync",
+          "publish": true
+        }
+      },
+      "modules": { "enabled_by_default": true, "catalog_tab": true }
+    },
+    "poc": {
+      "label": "POC",
+      "label_plural": "POCs",
+      "table": "pocs",
+      "primary_key": "id",
+      "description": "Reusable person or team contact.",
+      "km_analogue": "Author / owner / assignee",
+      "fields": {
+        "id": { "type": "string", "required": true },
+        "team": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "modules": { "enabled_by_default": true, "catalog_tab": true, "publish_catalog": false }
+    },
+    "theme": {
+      "label": "Theme",
+      "label_plural": "Themes",
+      "table": "themes",
+      "primary_key": "id",
+      "description": "Reusable cross-cutting label applied to items and resources.",
+      "km_analogue": "Tag / MOC / cluster / branch",
+      "fields": {
+        "id": { "type": "string", "required": true, "publish": true },
+        "name": { "type": "string", "required": true, "unique": true, "publish": true },
+        "description": { "type": "text", "publish": true }
+      },
+      "modules": { "enabled_by_default": true, "catalog_tab": true }
+    },
+    "question": {
+      "label": "Question",
+      "label_plural": "Questions",
+      "table": "item_questions",
+      "primary_key": "id",
+      "description": "Open thread on a single item with optional assignee.",
+      "km_analogue": "TODO / open question / comment",
+      "fields": {
+        "id": { "type": "string", "required": true },
+        "checklist_id": { "type": "string", "required": true },
+        "item_id": { "type": "integer", "required": true },
+        "text": { "type": "text", "required": true },
+        "poc_id": { "type": "string", "foreign_key": "pocs.id", "on_delete": "SET NULL" },
+        "created_at": { "type": "date" },
+        "sort_order": { "type": "integer", "default": 0 }
+      },
+      "modules": { "enabled_by_default": true, "catalog_tab": true, "publish": false }
+    },
+    "rcm_risk": {
+      "label": "Risk",
+      "label_plural": "Risks",
+      "table": "rcm_risks",
+      "primary_key": "id",
+      "description": "Standalone risk in Risk & Control Matrix.",
+      "km_analogue": "Decision / concern / hypothesis",
+      "fields": {
+        "id": { "type": "integer", "auto_increment": true },
+        "title": { "type": "string" },
+        "description": { "type": "text" },
+        "category": { "type": "string" },
+        "likelihood": { "type": "enum", "options": ["Low", "Medium", "High"] },
+        "risk_owner": { "type": "string" },
+        "sort_order": { "type": "integer", "default": 0 }
+      },
+      "modules": { "enabled_by_default": true, "catalog_tab": "rcm", "publish": false }
+    },
+    "rcm_control": {
+      "label": "Control",
+      "label_plural": "Controls",
+      "table": "rcm_controls",
+      "primary_key": "id",
+      "description": "Mitigation or control under a risk.",
+      "km_analogue": "Mitigation / action / sub-decision",
+      "fields": {
+        "id": { "type": "integer", "auto_increment": true },
+        "risk_id": { "type": "integer", "foreign_key": "rcm_risks.id", "on_delete": "CASCADE" },
+        "title": { "type": "string" },
+        "description": { "type": "text" },
+        "sort_order": { "type": "integer", "default": 0 }
+      },
+      "modules": { "enabled_by_default": true, "publish": false }
+    }
+  },
+  "relationships": [
+    {
+      "id": "checklist_contains_item",
+      "from": "checklist",
+      "to": "item",
+      "type": "containment",
+      "cardinality": "1:N",
+      "storage": { "foreign_key": "items.checklist_id" },
+      "publish": true,
+      "editor": { "implicit": true }
+    },
+    {
+      "id": "item_embedded_sub_items",
+      "from": "item",
+      "to": "item",
+      "type": "embedded_children",
+      "cardinality": "1:N",
+      "storage": { "field": "items.sub_items", "format": "json_array" },
+      "publish": true,
+      "editor": { "inline_under_aspect": true },
+      "note": "Child bullets under aspect — tree fragment, not separate rows."
+    },
+    {
+      "id": "item_embedded_notes",
+      "from": "item",
+      "to": "content",
+      "type": "embedded",
+      "cardinality": "1:1",
+      "storage": { "field": "items.notes", "format": "bullet_list", "separator": "\u001e" },
+      "publish": true,
+      "editor": { "column": "notes", "actions": ["add_question", "add_risk"] }
+    },
+    {
+      "id": "resource_tags_item",
+      "from": "resource",
+      "to": "item",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "resource_tags",
+        "keys": ["resource_id", "checklist_id", "item_id"]
+      },
+      "publish": { "as": "checklist_tags on resource; themes on item via export" },
+      "editor": {
+        "catalog_action": "+ Tag",
+        "item_action": "Tag catalog",
+        "modal": "tag_resource_to_items"
+      },
+      "sync": {
+        "on_tag": "append_resource_line_to_item",
+        "on_item_save": "sync_item_resources_to_catalog"
+      }
+    },
+    {
+      "id": "resource_projects_item_resources",
+      "from": "resource",
+      "to": "item",
+      "type": "denormalized_projection",
+      "cardinality": "M:N",
+      "storage": { "field": "items.resources", "mirrors": "resource_tags" },
+      "publish": true,
+      "public_display": true
+    },
+    {
+      "id": "poc_tags_item",
+      "from": "poc",
+      "to": "item",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "poc_tags",
+        "keys": ["poc_id", "checklist_id", "item_id"]
+      },
+      "publish": { "partial": "item.poc string only" },
+      "editor": {
+        "catalog_action": "+ Tag",
+        "item_action": "Tag catalog",
+        "modal": "tag_poc_to_items"
+      },
+      "sync": {
+        "on_tag": "set_item_poc_line",
+        "on_item_save": "sync_item_pocs_to_catalog"
+      }
+    },
+    {
+      "id": "poc_projects_item_poc",
+      "from": "poc",
+      "to": "item",
+      "type": "denormalized_projection",
+      "cardinality": "M:N",
+      "storage": { "field": "items.poc", "mirrors": "poc_tags" },
+      "publish": true,
+      "public_display": true
+    },
+    {
+      "id": "theme_tags_item",
+      "from": "theme",
+      "to": "item",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "item_themes",
+        "keys": ["checklist_id", "item_id", "theme_id"]
+      },
+      "publish": { "as": "theme names array on item in checklist JSON" },
+      "editor": {
+        "item_action": "Edit themes pills on aspect",
+        "theme_action": "Link items from theme tab",
+        "modal": "theme_links"
+      }
+    },
+    {
+      "id": "theme_tags_resource",
+      "from": "theme",
+      "to": "resource",
+      "type": "junction",
+      "cardinality": "M:N",
+      "storage": {
+        "table": "resource_themes",
+        "keys": ["resource_id", "theme_id"]
+      },
+      "publish": { "as": "theme names on resource in resources.json" },
+      "editor": { "resource_action": "Edit themes", "theme_action": "Link resources" }
+    },
+    {
+      "id": "question_belongs_item",
+      "from": "question",
+      "to": "item",
+      "type": "containment",
+      "cardinality": "N:1",
+      "storage": { "fields": ["item_questions.checklist_id", "item_questions.item_id"] },
+      "publish": false,
+      "editor": { "inline_under_notes": "+ Add question", "aggregate_tab": "questions" }
+    },
+    {
+      "id": "question_assigned_poc",
+      "from": "question",
+      "to": "poc",
+      "type": "assignment",
+      "cardinality": "N:1",
+      "storage": { "foreign_key": "item_questions.poc_id", "on_delete": "SET NULL" },
+      "publish": false,
+      "editor": { "dropdown_on_question": true }
+    },
+    {
+      "id": "risk_contains_control",
+      "from": "rcm_risk",
+      "to": "rcm_control",
+      "type": "containment",
+      "cardinality": "1:N",
+      "storage": { "foreign_key": "rcm_controls.risk_id", "on_delete": "CASCADE" },
+      "publish": false,
+      "editor": { "tab": "rcm" }
+    },
+    {
+      "id": "item_derives_risk",
+      "from": "item",
+      "to": "rcm_risk",
+      "type": "derived_action",
+      "cardinality": "0:N",
+      "storage": { "no_fk": true },
+      "publish": false,
+      "editor": {
+        "action": "+ Add risk",
+        "copies": { "title_from": "aspect", "description_from": "notes" }
+      }
+    },
+    {
+      "id": "issue_creates_resource",
+      "from": "github_issue",
+      "to": "resource",
+      "type": "provenance",
+      "cardinality": "1:1",
+      "storage": { "field": "resources.issue_number", "id_prefix": "issue-" },
+      "publish": true,
+      "intake": { "label": "audit-resource", "template": "compliance-resource.yml" }
+    },
+    {
+      "id": "issue_updates_item",
+      "from": "github_issue",
+      "to": "item",
+      "type": "provenance",
+      "cardinality": "1:1",
+      "storage": { "match_by": "item.id" },
+      "publish": true,
+      "intake": { "label": "audit-checklist", "template": "compliance-checklist-update.yml" }
+    },
+    {
+      "id": "issue_resource_tags_item",
+      "from": "github_issue",
+      "to": "item",
+      "type": "provenance",
+      "cardinality": "0:1",
+      "storage": { "via": "append to item.resources when checklist_item provided" },
+      "publish": true
+    }
+  ],
+  "relationship_matrix": {
+    "description": "Quick reference — row relates to column",
+    "entities": ["item", "resource", "poc", "theme", "question", "rcm_risk", "rcm_control", "checklist", "github_issue"],
+    "matrix": {
+      "item": {
+        "resource": "M:N junction + denormalized projection",
+        "poc": "M:N junction + denormalized projection",
+        "theme": "M:N junction",
+        "question": "1:N containment",
+        "rcm_risk": "derived_action (no FK)",
+        "checklist": "N:1 containment",
+        "sub_items": "embedded children (same type)"
+      },
+      "resource": {
+        "item": "M:N",
+        "theme": "M:N",
+        "github_issue": "N:1 provenance"
+      },
+      "theme": { "item": "M:N", "resource": "M:N" },
+      "question": { "item": "N:1", "poc": "N:1 assignment" },
+      "rcm_risk": { "rcm_control": "1:N" }
+    }
+  },
+  "checklist_variants": [
+    {
+      "id": "iia-ai-governance-framework",
+      "title": "IIA Checklist",
+      "short_label": "IIA",
+      "seed_file": "data/iia-ai-governance-framework.json",
+      "editor_columns": ["id", "aspect", "notes", "resources", "poc"],
+      "emphasis": ["themes_on_aspect", "notes", "questions_under_notes"]
+    },
+    {
+      "id": "nist-ai-rmf-playbook",
+      "title": "NIST AI RMF Playbook",
+      "short_label": "NIST",
+      "seed_file": "data/nist-ai-rmf-playbook.json",
+      "editor_columns": ["id", "aspect", "description", "resources", "poc"],
+      "emphasis": ["description_column"]
+    }
+  ],
+  "views": [
+    {
+      "id": "checklist_table",
+      "type": "table",
+      "entity": "item",
+      "label": "Checklist",
+      "publish": true,
+      "public_file": "index.html",
+      "poll_interval_seconds": 60
+    },
+    {
+      "id": "resources_catalog",
+      "type": "catalog",
+      "entity": "resource",
+      "label": "Resources",
+      "sort_by": "created_at desc",
+      "publish": true
+    },
+    {
+      "id": "poc_catalog",
+      "type": "catalog",
+      "entity": "poc",
+      "label": "POC",
+      "columns": ["team", "name", "role", "tagged_items"],
+      "publish": false
+    },
+    {
+      "id": "themes_catalog",
+      "type": "catalog",
+      "entity": "theme",
+      "label": "Themes",
+      "columns": ["name", "description", "tagged_items", "tagged_resources"],
+      "publish": true
+    },
+    {
+      "id": "questions_aggregate",
+      "type": "aggregate",
+      "entity": "question",
+      "label": "Questions",
+      "group_by": "item",
+      "publish": false
+    },
+    {
+      "id": "rcm_matrix",
+      "type": "hierarchy",
+      "entity": "rcm_risk",
+      "child_entity": "rcm_control",
+      "label": "RCM",
+      "publish": false,
+      "export_xlsx": true
+    }
+  ],
+  "publish_manifest": {
+    "files": [
+      {
+        "path": "data/{checklist_id}.json",
+        "entities": ["checklist", "item"],
+        "item_fields": [
+          "id",
+          "aspect",
+          "sub_items",
+          "resources",
+          "maturity",
+          "poc",
+          "status",
+          "due_date",
+          "notes",
+          "description",
+          "effort_hours",
+          "themes"
+        ]
+      },
+      {
+        "path": "data/resources.json",
+        "entities": ["resource"],
+        "include_junctions": ["resource_tags", "resource_themes"]
+      },
+      {
+        "path": "data/themes.json",
+        "entities": ["theme"],
+        "include_junctions": ["item_themes", "resource_themes"]
+      }
+    ],
+    "local_only": ["rcm_risk", "rcm_control", "question", "poc_catalog_structure"],
+    "static_assets": ["index.html", "styles.css", "arc-logo.png"]
+  },
+  "editor_ux_primitives": [
+    {
+      "id": "catalog_tab",
+      "description": "Dedicated tab to manage reusable entities (resources, POCs, themes)."
+    },
+    {
+      "id": "primary_grid",
+      "description": "Main table for items with inline editable fields."
+    },
+    {
+      "id": "tag_modal",
+      "description": "Many-to-many picker — select items to link catalog entry."
+    },
+    {
+      "id": "projection_sync",
+      "description": "On tag/save, update both junction table and inline display field."
+    },
+    {
+      "id": "derived_action_button",
+      "description": "Create related entity from row context without FK (+ Add risk, + Add question)."
+    },
+    {
+      "id": "theme_pills",
+      "description": "Inline tag display and edit on primary entity field (aspect)."
+    },
+    {
+      "id": "publish_boundary",
+      "description": "Tabs marked publish:false stay in planning.db and Excel export only."
+    }
+  ],
+  "intake_forms": [
+    {
+      "id": "submit_resource",
+      "provider": "github_issues",
+      "template": ".github/ISSUE_TEMPLATE/compliance-resource.yml",
+      "labels": ["audit-resource", "compliance"],
+      "field_mapping": {
+        "Resource title": "resource.title",
+        "Resource type": "resource.type",
+        "Link or location": "resource.link",
+        "Summary": "resource.summary",
+        "Submitted by": "resource.submitted_by",
+        "Related checklist item # (optional)": "resource_tags → item + item.resources projection"
+      }
+    },
+    {
+      "id": "checklist_update",
+      "provider": "github_issues",
+      "template": ".github/ISSUE_TEMPLATE/compliance-checklist-update.yml",
+      "labels": ["audit-checklist", "compliance"],
+      "field_mapping": {
+        "Checklist item #": "item.id",
+        "GDDY Maturity": "item.maturity",
+        "Research / GDDY Internal Resources": "item.resources",
+        "Point of Contact (POC)": "item.poc",
+        "Notes": "append to item.resources"
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "id": "pages_deploy",
+      "file": ".github/workflows/compliance-pages.yml",
+      "trigger": "push to main under site path",
+      "action": "Copy index.html, styles.css, data/ → GitHub Pages"
+    },
+    {
+      "id": "issue_sync",
+      "file": ".github/workflows/compliance-sync.yml",
+      "trigger": "issues opened/edited/labeled or manual",
+      "action": "Run sync.py → commit data/*.json → close issue with audit-synced"
+    }
+  ],
+  "template_packages": [
+    {
+      "id": "outline_notes",
+      "entities": ["checklist", "item"],
+      "fields": ["aspect", "notes", "sub_items", "status"],
+      "views": ["outline"]
+    },
+    {
+      "id": "tagged_knowledge_base",
+      "entities": ["checklist", "item", "resource", "theme"],
+      "relationships": ["resource_tags_item", "theme_tags_item", "theme_tags_resource"],
+      "views": ["checklist_table", "resources_catalog", "themes_catalog"]
+    },
+    {
+      "id": "owned_project_tracker",
+      "extends": "tagged_knowledge_base",
+      "entities": ["poc", "question"],
+      "relationships": ["poc_tags_item", "question_belongs_item", "question_assigned_poc"],
+      "views": ["questions_aggregate"]
+    },
+    {
+      "id": "audit_compliance",
+      "extends": "owned_project_tracker",
+      "entities": ["rcm_risk", "rcm_control"],
+      "relationships": ["risk_contains_control", "item_derives_risk"],
+      "intake_forms": ["submit_resource", "checklist_update"]
+    }
+  ]
+}

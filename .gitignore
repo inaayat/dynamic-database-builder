@@ -1,0 +1,19 @@
+# Local database
+planning.db
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Exports
+*.xlsx
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
