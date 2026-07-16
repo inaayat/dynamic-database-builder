@@ -35,6 +35,18 @@ Planning artifacts and schema specifications for the tooling build. No runtime c
 See [BUILD_PLAN.md](./BUILD_PLAN.md) for deliverables and sprint checklists.  
 See [TECHNICAL_SPEC.md](./TECHNICAL_SPEC.md) before implementing Phase 0–1.
 
+## Run locally (Phase 0)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python run.py
+```
+
+Open http://127.0.0.1:8771/ — editor shell with Edit/Design tabs.  
+API: `GET /api/schema`, `GET /api/health`, `GET /api/meta`
+
 ## First sprint (Week 1)
 
 1. `kit/schema/model.py` — Pydantic models for schema v1.1

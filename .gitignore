@@ -1,5 +1,7 @@
 # Local database
 planning.db
+planning.db-shm
+planning.db-wal
 *.db
 
 # Python
