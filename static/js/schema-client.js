@@ -1,0 +1,61 @@
+/** API client for schema Design tab. */
+
+export async function getSchema() {
+  const res = await fetch("/api/schema");
+  if (!res.ok) throw new Error(`GET /api/schema: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function getPackages() {
+  const res = await fetch("/api/schema/packages");
+  if (!res.ok) throw new Error(`GET /api/schema/packages: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function patchSchema(partial) {
+  const res = await fetch("/api/schema", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(partial),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `PATCH /api/schema: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function validateSchema(schema) {
+  const res = await fetch("/api/schema/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(schema || {}),
+  });
+  if (!res.ok) throw new Error(`POST /api/schema/validate: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function applySchema(schema) {
+  const res = await fetch("/api/schema/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(schema),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.message || data.detail || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+export async function loadPackage(id) {
+  const res = await fetch(`/api/schema/package/${encodeURIComponent(id)}`, {
+    method: "POST",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}

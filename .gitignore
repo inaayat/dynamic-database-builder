@@ -1,4 +1,6 @@
-# Local database
+# Active schema (user edits from Design tab)
+data/active-schema.json
+
 planning.db
 planning.db-shm
 planning.db-wal

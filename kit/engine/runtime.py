@@ -22,14 +22,19 @@ class Runtime:
         self.db_path = get_db_path(package, root)
         self.bootstrap()
 
-    def bootstrap(self) -> None:
+    def bootstrap(self, seed: bool = True) -> None:
         conn = connect(self.db_path)
         try:
             init_meta(conn, self.package)
             apply_schema_ddl(conn, self.package)
-            apply_seed(conn, self.package)
+            if seed:
+                apply_seed(conn, self.package)
         finally:
             conn.close()
+
+    def reload(self, package: SitePackage, seed: bool = False) -> None:
+        self.package = package
+        self.bootstrap(seed=seed)
 
     def _with_conn(self, fn: Callable) -> T:
         conn = connect(self.db_path)
