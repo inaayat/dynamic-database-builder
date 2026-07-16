@@ -12,19 +12,23 @@ export async function renderGridView({
   notebookId,
 }) {
   container.innerHTML = "<p class='muted'>Loading notes…</p>";
-  const view = schema.views.find((v) => v.type === "grid");
-  const columns = view?.columns_from_fields || ["title", "body", "references"];
-  const entity = schema.entity_types[view?.entity || "note"];
-  const fields = entity?.fields || {};
+  try {
+    const view = schema.views.find((v) => v.type === "grid");
+    const columns = view?.columns_from_fields || ["title", "body", "references"];
+    const entity = schema.entity_types[view?.entity || "note"];
+    const fields = entity?.fields || {};
 
-  const [notesRes, tagsRes] = await Promise.all([
-    fetch(`/api/notes?notebook_id=${encodeURIComponent(notebookId)}`),
-    fetch("/api/tags"),
-  ]);
-  const notes = await notesRes.json();
-  const tags = await tagsRes.json();
+    const [notesRes, tagsRes] = await Promise.all([
+      fetch(`/api/notes?notebook_id=${encodeURIComponent(notebookId)}`),
+      fetch("/api/tags"),
+    ]);
+    if (!notesRes.ok) throw new Error(`Notes API: HTTP ${notesRes.status}`);
+    if (!tagsRes.ok) throw new Error(`Tags API: HTTP ${tagsRes.status}`);
+    const notes = await notesRes.json();
+    const tags = await tagsRes.json();
+    if (!Array.isArray(notes)) throw new Error("Unexpected notes response");
 
-  container.innerHTML = "";
+    container.innerHTML = "";
   const toolbar = document.createElement("div");
   toolbar.className = "view-toolbar";
   const status = document.createElement("span");
@@ -119,4 +123,7 @@ export async function renderGridView({
   });
   table.appendChild(tbody);
   container.appendChild(table);
+  } catch (err) {
+    container.innerHTML = `<p class="status error">Failed to load notes: ${err.message}</p>`;
+  }
 }

@@ -3,16 +3,20 @@ import { openTagModal } from "../widgets/tag-modal.js";
 
 export async function renderCatalogView({ container, schema, entityId, notebookId }) {
   container.innerHTML = "<p class='muted'>Loading…</p>";
+  try {
   const view = schema.views.find((v) => v.type === "catalog" && v.entity === entityId);
   const entity = schema.entity_types[entityId];
   const table = entity?.table || entityId;
 
   const res = await fetch(`/api/${table}`);
+  if (!res.ok) throw new Error(`API /${table}: HTTP ${res.status}`);
   const rows = await res.json();
+  if (!Array.isArray(rows)) throw new Error(`Unexpected response from /${table}`);
 
   let notes = [];
   if (entityId === "reference") {
     const nRes = await fetch(`/api/notes?notebook_id=${encodeURIComponent(notebookId)}`);
+    if (!nRes.ok) throw new Error(`Notes API: HTTP ${nRes.status}`);
     notes = await nRes.json();
   }
 
@@ -109,4 +113,7 @@ export async function renderCatalogView({ container, schema, entityId, notebookI
 
   grid.appendChild(tbody);
   container.appendChild(grid);
+  } catch (err) {
+    container.innerHTML = `<p class="status error">Failed to load: ${err.message}</p>`;
+  }
 }
