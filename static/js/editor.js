@@ -1,10 +1,10 @@
+import { initDesignTab } from "./design/design-tab.js";
 import { renderCatalogView } from "./views/catalog-view.js";
 import { renderGridView } from "./views/grid-view.js";
 
-const NOTEBOOK_ID = "main";
-
 let schema = null;
 let activeViewId = null;
+let designTab = null;
 
 const tabs = document.querySelectorAll(".tab[data-mode]");
 const panels = document.querySelectorAll(".panel[data-mode]");
@@ -21,6 +21,25 @@ tabs.forEach((tab) => {
   });
 });
 
+function getDefaultContainerId() {
+  if (!schema) return "main";
+  const seed = schema.seed?.notebooks?.[0]?.id;
+  if (seed) return seed;
+  const container = Object.entries(schema.entity_types || {}).find(
+    ([, e]) => e.primitive === "container"
+  );
+  return container?.[1]?.fields?.id?.default || container?.[0] || "main";
+}
+
+function switchToEditTab() {
+  tabs.forEach((t) => {
+    const on = t.dataset.mode === "edit";
+    t.classList.toggle("active", on);
+    t.setAttribute("aria-selected", on);
+  });
+  panels.forEach((p) => p.classList.toggle("active", p.dataset.mode === "edit"));
+}
+
 async function loadSchema() {
   const status = document.getElementById("load-status");
   try {
@@ -34,7 +53,7 @@ async function loadSchema() {
       `${schema.site.id} · schema ${schema.schema_version}`;
 
     renderViewTabs();
-    renderDesignPanel();
+    initDesign();
     if (status) status.textContent = "";
   } catch (err) {
     if (status) {
@@ -42,6 +61,24 @@ async function loadSchema() {
       status.classList.add("error");
     }
   }
+}
+
+function initDesign() {
+  const mount = document.getElementById("design-mount");
+  if (!mount) return;
+  designTab = initDesignTab({
+    mount,
+    getSchema: () => schema,
+    setSchema: (next) => {
+      schema = next;
+      renderViewTabs();
+    },
+    onPreview: () => {
+      switchToEditTab();
+      if (activeViewId) showView(activeViewId);
+      else renderViewTabs();
+    },
+  });
 }
 
 function renderViewTabs() {
@@ -87,34 +124,19 @@ async function showView(viewId) {
   const view = schema.views.find((v) => v.id === viewId);
   if (!mount || !view) return;
 
+  const notebookId = getDefaultContainerId();
+
   if (view.type === "grid") {
-    await renderGridView({ container: mount, schema, notebookId: NOTEBOOK_ID });
+    await renderGridView({ container: mount, schema, notebookId, view });
   } else if (view.type === "catalog") {
     await renderCatalogView({
       container: mount,
       schema,
       entityId: view.entity,
-      notebookId: NOTEBOOK_ID,
+      notebookId,
     });
   } else {
     mount.innerHTML = `<p class="muted">View type <code>${view.type}</code> not implemented yet.</p>`;
-  }
-}
-
-function renderDesignPanel() {
-  const summary = document.getElementById("schema-summary");
-  const entityList = document.getElementById("entity-list");
-  if (!summary || !schema) return;
-  summary.innerHTML = `
-    <dt>Package</dt><dd>${schema.title || schema.site.id}</dd>
-    <dt>Entities</dt><dd>${Object.keys(schema.entity_types).length}</dd>
-    <dt>Relationships</dt><dd>${(schema.relationships || []).length}</dd>
-    <dt>Views</dt><dd>${(schema.views || []).length}</dd>
-  `;
-  if (entityList) {
-    entityList.innerHTML = Object.entries(schema.entity_types)
-      .map(([id, e]) => `<li><code>${id}</code> — ${e.label} <em>(${e.primitive})</em></li>`)
-      .join("");
   }
 }
 

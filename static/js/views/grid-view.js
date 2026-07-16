@@ -2,6 +2,7 @@ import { createAutosave } from "../autosave-row.js";
 import {
   renderBoxStack,
   renderBulletEditor,
+  renderEnumSelect,
   renderTextInput,
 } from "../widgets/field-renderers.js";
 import { openThemeModal } from "../widgets/tag-modal.js";
@@ -10,10 +11,11 @@ export async function renderGridView({
   container,
   schema,
   notebookId,
+  view: viewProp,
 }) {
   container.innerHTML = "<p class='muted'>Loading notes…</p>";
   try {
-    const view = schema.views.find((v) => v.type === "grid");
+    const view = viewProp || schema.views.find((v) => v.type === "grid");
     const columns = view?.columns_from_fields || ["title", "body", "references"];
     const entity = schema.entity_types[view?.entity || "note"];
     const fields = entity?.fields || {};
@@ -85,6 +87,8 @@ export async function renderGridView({
       };
       if (fdef.type === "bullet_list") {
         td.appendChild(renderBulletEditor(note[col], onChange));
+      } else if (fdef.type === "enum") {
+        td.appendChild(renderEnumSelect(note[col], fdef.options, onChange));
       } else if (fdef.editor?.widget === "box_stack" || fdef.type === "multiline_text") {
         td.appendChild(renderBoxStack(note[col], onChange));
       } else {

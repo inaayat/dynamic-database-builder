@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import uvicorn
 
+from pathlib import Path
+
 from kit.schema.loader import get_loader
+
+ROOT = Path(__file__).resolve().parent
 
 
 def main() -> None:
-    loader = get_loader()
+    loader = get_loader(ROOT)
     package = loader.package
     port = package.site.port
     print(f"Starting {package.site.title} on http://127.0.0.1:{port}")

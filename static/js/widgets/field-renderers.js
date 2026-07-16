@@ -81,6 +81,20 @@ export function renderBoxStack(value, onChange) {
   return wrap;
 }
 
+export function renderEnumSelect(value, options, onChange) {
+  const select = document.createElement("select");
+  select.className = "cell-input";
+  (options || []).forEach((opt) => {
+    const o = document.createElement("option");
+    o.value = opt;
+    o.textContent = opt;
+    o.selected = value === opt;
+    select.appendChild(o);
+  });
+  select.addEventListener("change", () => onChange(select.value));
+  return select;
+}
+
 export function renderTextInput(value, onChange) {
   const input = document.createElement("input");
   input.type = "text";
