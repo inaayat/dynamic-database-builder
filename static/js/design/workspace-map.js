@@ -1,33 +1,65 @@
-/** Entity-relationship diagram — table boxes + connector lines. */
+/** Entity-relationship diagram — draggable tables, auto-layout, optional junction nodes. */
 
 import { friendlyFieldType } from "./design-actions.js";
 import { isPrimaryKey } from "./field-presets.js";
+import {
+  MAP_PAD,
+  autoLayoutPositions,
+  ensureMapUi,
+  estimateTableHeight,
+  resetMapPositions,
+} from "./map-layout.js";
 import { storageLabel } from "./help-text.js";
+
+const JUNCTION_PREFIX = "__junction__";
 
 export function renderWorkspaceMap({
   container,
   schema,
   onChange,
-  density = "simple", // simple | full
+  density = "simple",
+  showJunctionTables = false,
   selectedEntityId = null,
   onSelectEntity = null,
+  onResetLayout = null,
 }) {
   let localSelected = selectedEntityId;
   let tableEls = {};
   let resizeObs = null;
+  let dragState = null;
 
   function emit() {
     onChange(schema);
-    render();
   }
 
   function selectEntity(id) {
+    if (id?.startsWith(JUNCTION_PREFIX)) return;
     localSelected = id;
     if (onSelectEntity) onSelectEntity(id);
     else render();
   }
 
-  function fieldRows(entity, entityId) {
+  function entityIds() {
+    return Object.keys(schema.entity_types || {});
+  }
+
+  function baseRels() {
+    return (schema.relationships || []).filter(
+      (r) => schema.entity_types[r.from] && schema.entity_types[r.to]
+    );
+  }
+
+  function fieldRows(entity, entityId, isJunction = false, rel = null) {
+    if (isJunction && rel?.junction?.keys) {
+      return rel.junction.keys.map((key) => [
+        key,
+        {
+          type: "foreign_key",
+          link_to: key.replace(/_id$/, ""),
+          editor: { header: key },
+        },
+      ]);
+    }
     return Object.entries(entity.fields || {}).filter(([fname, fdef]) => {
       if (fdef.design_only || fdef.type === "item_link") return false;
       if (density === "full") return true;
@@ -37,19 +69,26 @@ export function renderWorkspaceMap({
     });
   }
 
-  function renderTable(id, entity) {
+  function renderTable(id, entity, { isJunction = false, rel = null } = {}) {
     const table = document.createElement("article");
-    table.className = "erd-table" + (id === localSelected ? " selected" : "");
+    const selected = id === localSelected;
+    table.className =
+      "erd-table" +
+      (selected ? " selected" : "") +
+      (isJunction ? " erd-junction" : "");
     table.dataset.entityId = id;
 
     const head = document.createElement("header");
     head.className = "erd-table-head";
-    head.textContent = entity.label;
+    head.title = isJunction ? "Drag to reposition" : "Drag header to reposition";
+    head.innerHTML = isJunction
+      ? `<span class="erd-junction-label">${escapeHtml(rel?.id || "link")}</span>`
+      : escapeHtml(entity.label);
     table.appendChild(head);
 
     const body = document.createElement("div");
     body.className = "erd-table-body";
-    const rows = fieldRows(entity, id);
+    const rows = fieldRows(entity, id, isJunction, rel);
 
     if (!rows.length) {
       const empty = document.createElement("div");
@@ -58,32 +97,35 @@ export function renderWorkspaceMap({
       body.appendChild(empty);
     } else {
       rows.forEach(([fname, fdef]) => {
-        body.appendChild(renderFieldRow(entity, fname, fdef));
+        body.appendChild(renderFieldRow(isJunction ? { fields: {} } : entity, fname, fdef, isJunction));
       });
     }
 
     table.appendChild(body);
-    table.addEventListener("click", (e) => {
-      if (e.target.closest("button")) return;
-      selectEntity(id);
-    });
+
+    if (!isJunction) {
+      table.addEventListener("click", (e) => {
+        if (e.target.closest("button") || dragState?.moved) return;
+        selectEntity(id);
+      });
+    }
+
+    bindDrag(head, table, id);
     return table;
   }
 
-  function renderFieldRow(entity, fname, fdef) {
+  function renderFieldRow(entity, fname, fdef, isJunction) {
     const row = document.createElement("div");
     row.className = "erd-field-row";
 
     const badge = document.createElement("span");
     badge.className = "erd-key-badge";
-    if (isPrimaryKey(entity, fname)) {
-      badge.className += " erd-key-pk";
-      badge.textContent = "PK";
-      badge.title = "Primary key";
-    } else if (fdef.type === "foreign_key" && fdef.link_to) {
+    if (isJunction || (fdef.type === "foreign_key" && fdef.link_to)) {
       badge.className += " erd-key-fk";
       badge.textContent = "FK";
-      badge.title = `Links to ${fdef.link_to}`;
+    } else if (isPrimaryKey(entity, fname)) {
+      badge.className += " erd-key-pk";
+      badge.textContent = "PK";
     } else {
       badge.className += " erd-key-none";
       badge.textContent = "";
@@ -93,10 +135,9 @@ export function renderWorkspaceMap({
     name.className = "erd-field-name";
     name.textContent = fdef.editor?.header || fname;
 
-    row.appendChild(badge);
-    row.appendChild(name);
+    row.append(badge, name);
 
-    if (density === "full") {
+    if (density === "full" && !isJunction) {
       const type = document.createElement("span");
       type.className = "erd-field-type";
       type.textContent = friendlyFieldType(fdef.type);
@@ -104,6 +145,50 @@ export function renderWorkspaceMap({
     }
 
     return row;
+  }
+
+  function bindDrag(handle, table, id) {
+    handle.addEventListener("pointerdown", (e) => {
+      if (id.startsWith(JUNCTION_PREFIX)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const canvas = table.closest(".erd-canvas");
+      const positions = ensureMapUi(schema);
+      const start = positions[id] || { x: table.offsetLeft, y: table.offsetTop };
+      dragState = {
+        id,
+        canvas,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        originX: start.x,
+        originY: start.y,
+        moved: false,
+      };
+      handle.setPointerCapture(e.pointerId);
+    });
+
+    handle.addEventListener("pointermove", (e) => {
+      if (!dragState || dragState.pointerId !== e.pointerId) return;
+      const dx = e.clientX - dragState.startX;
+      const dy = e.clientY - dragState.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragState.moved = true;
+      const positions = ensureMapUi(schema);
+      positions[dragState.id] = {
+        x: Math.max(MAP_PAD, dragState.originX + dx),
+        y: Math.max(MAP_PAD, dragState.originY + dy),
+      };
+      applyPositions();
+      redrawEdges();
+    });
+
+    const endDrag = (e) => {
+      if (!dragState || dragState.pointerId !== e.pointerId) return;
+      if (dragState.moved) emit();
+      dragState = null;
+    };
+    handle.addEventListener("pointerup", endDrag);
+    handle.addEventListener("pointercancel", endDrag);
   }
 
   function anchorPoint(rect, targetX, targetY, containerRect) {
@@ -149,60 +234,128 @@ export function renderWorkspaceMap({
     g.appendChild(gEl);
   }
 
-  function drawEdges(svg, canvas, rels) {
-    const cRect = canvas.getBoundingClientRect();
+  function drawEdge(svg, cRect, fromEl, toEl, rel, { active = false } = {}) {
+    if (!fromEl || !toEl) return;
+    const rA = fromEl.getBoundingClientRect();
+    const rB = toEl.getBoundingClientRect();
+    const acx = rA.left + rA.width / 2 - cRect.left;
+    const acy = rA.top + rA.height / 2 - cRect.top;
+    const bcx = rB.left + rB.width / 2 - cRect.left;
+    const bcy = rB.top + rB.height / 2 - cRect.top;
+    const a = anchorPoint(rA, bcx, bcy, cRect);
+    const b = anchorPoint(rB, acx, acy, cRect);
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(a.x));
+    line.setAttribute("y1", String(a.y));
+    line.setAttribute("x2", String(b.x));
+    line.setAttribute("y2", String(b.y));
+    line.setAttribute("class", "erd-line" + (active ? " erd-line-active" : ""));
+
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = `${rel.from} ${storageLabel(rel.storage)} ${rel.to}`;
+    line.appendChild(title);
+    svg.appendChild(line);
+
+    const angleA = Math.atan2(b.y - a.y, b.x - a.x);
+    const angleB = Math.atan2(a.y - b.y, a.x - b.x);
+    const fromMark = rel.storage === "junction" ? "many" : "one";
+    const markClass = active ? "erd-card-mark erd-card-mark-active" : "erd-card-mark";
+    drawCardinality(svg, a.x, a.y, angleA, fromMark, markClass);
+    drawCardinality(svg, b.x, b.y, angleB, "many", markClass);
+
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", String(mx));
+    label.setAttribute("y", String(my - 4));
+    label.setAttribute("class", "erd-line-label");
+    label.textContent = storageLabel(rel.storage);
+    svg.appendChild(label);
+  }
+
+  let svgEl = null;
+  let canvasEl = null;
+  let relsForDraw = [];
+
+  function redrawEdges() {
+    if (!svgEl || !canvasEl) return;
+    const cRect = canvasEl.getBoundingClientRect();
     if (!cRect.width || !cRect.height) return;
+    svgEl.setAttribute("viewBox", `0 0 ${cRect.width} ${cRect.height}`);
+    svgEl.innerHTML = "";
 
-    svg.setAttribute("viewBox", `0 0 ${cRect.width} ${cRect.height}`);
-    svg.innerHTML = "";
-
-    rels.forEach((rel) => {
-      const elA = tableEls[rel.from];
-      const elB = tableEls[rel.to];
-      if (!elA || !elB) return;
-
-      const rA = elA.getBoundingClientRect();
-      const rB = elB.getBoundingClientRect();
-      const acx = rA.left + rA.width / 2 - cRect.left;
-      const acy = rA.top + rA.height / 2 - cRect.top;
-      const bcx = rB.left + rB.width / 2 - cRect.left;
-      const bcy = rB.top + rB.height / 2 - cRect.top;
-
-      const a = anchorPoint(rA, bcx, bcy, cRect);
-      const b = anchorPoint(rB, acx, acy, cRect);
-
+    relsForDraw.forEach((rel) => {
       const active =
         localSelected === rel.from || localSelected === rel.to;
-
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(a.x));
-      line.setAttribute("y1", String(a.y));
-      line.setAttribute("x2", String(b.x));
-      line.setAttribute("y2", String(b.y));
-      line.setAttribute("class", "erd-line" + (active ? " erd-line-active" : ""));
-
-      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      title.textContent = `${schema.entity_types[rel.from]?.label} ${storageLabel(rel.storage)} ${schema.entity_types[rel.to]?.label}`;
-      line.appendChild(title);
-      svg.appendChild(line);
-
-      const angleA = Math.atan2(b.y - a.y, b.x - a.x);
-      const angleB = Math.atan2(a.y - b.y, a.x - b.x);
-      const fromMark = rel.storage === "junction" ? "many" : "one";
-      const toMark = "many";
-      const markClass = active ? "erd-card-mark erd-card-mark-active" : "erd-card-mark";
-      drawCardinality(svg, a.x, a.y, angleA, fromMark, markClass);
-      drawCardinality(svg, b.x, b.y, angleB, toMark, markClass);
-
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", String(mx));
-      label.setAttribute("y", String(my - 4));
-      label.setAttribute("class", "erd-line-label");
-      label.textContent = storageLabel(rel.storage);
-      svg.appendChild(label);
+      if (showJunctionTables && rel.storage === "junction" && rel.junction) {
+        const jId = JUNCTION_PREFIX + rel.id;
+        const jEl = tableEls[jId];
+        drawEdge(svgEl, cRect, tableEls[rel.from], jEl, rel, { active });
+        drawEdge(svgEl, cRect, jEl, tableEls[rel.to], rel, { active });
+      } else {
+        drawEdge(svgEl, cRect, tableEls[rel.from], tableEls[rel.to], rel, { active });
+      }
     });
+
+    resizeCanvas();
+  }
+
+  function resizeCanvas() {
+    if (!canvasEl) return;
+    let maxX = 320;
+    let maxY = 280;
+    Object.values(tableEls).forEach((el) => {
+      maxX = Math.max(maxX, el.offsetLeft + el.offsetWidth + MAP_PAD);
+      maxY = Math.max(maxY, el.offsetTop + el.offsetHeight + MAP_PAD);
+    });
+    canvasEl.style.minWidth = maxX + "px";
+    canvasEl.style.minHeight = maxY + "px";
+  }
+
+  function applyPositions() {
+    const positions = ensureMapUi(schema);
+    Object.entries(tableEls).forEach(([id, el]) => {
+      if (id.startsWith(JUNCTION_PREFIX)) return;
+      const pos = positions[id];
+      if (!pos) return;
+      el.style.left = pos.x + "px";
+      el.style.top = pos.y + "px";
+    });
+
+    // Junction nodes sit at midpoint between parents
+    if (showJunctionTables) {
+      baseRels().forEach((rel) => {
+        if (rel.storage !== "junction" || !rel.junction) return;
+        const jId = JUNCTION_PREFIX + rel.id;
+        const jEl = tableEls[jId];
+        const a = tableEls[rel.from];
+        const b = tableEls[rel.to];
+        if (!jEl || !a || !b) return;
+        jEl.style.left =
+          (a.offsetLeft + b.offsetLeft) / 2 + a.offsetWidth / 4 + "px";
+        jEl.style.top =
+          (a.offsetTop + b.offsetTop) / 2 + a.offsetHeight / 4 + "px";
+      });
+    }
+  }
+
+  function layoutAll() {
+    const ids = entityIds();
+    const positions = ensureMapUi(schema);
+    const fieldCounts = Object.fromEntries(
+      ids.map((id) => {
+        const ent = schema.entity_types[id];
+        return [id, fieldRows(ent, id).length];
+      })
+    );
+    const laid = autoLayoutPositions({
+      entityIds: ids,
+      relationships: baseRels(),
+      positions,
+      fieldCounts,
+    });
+    Object.assign(positions, laid);
   }
 
   function render() {
@@ -221,43 +374,77 @@ export function renderWorkspaceMap({
       return;
     }
 
-    const rels = (schema.relationships || []).filter(
-      (r) => schema.entity_types[r.from] && schema.entity_types[r.to]
-    );
+    relsForDraw = baseRels();
+    layoutAll();
 
     const canvas = document.createElement("div");
     canvas.className = "erd-canvas";
+    canvasEl = canvas;
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "erd-lines");
     svg.setAttribute("aria-hidden", "true");
+    svgEl = svg;
 
-    const grid = document.createElement("div");
-    grid.className = "erd-tables";
+    const layer = document.createElement("div");
+    layer.className = "erd-layer";
 
     tableEls = {};
     entities.forEach(([id, entity]) => {
       const table = renderTable(id, entity);
-      grid.appendChild(table);
+      layer.appendChild(table);
       tableEls[id] = table;
     });
 
-    canvas.append(svg, grid);
+    if (showJunctionTables) {
+      relsForDraw.forEach((rel) => {
+        if (rel.storage !== "junction" || !rel.junction) return;
+        const jId = JUNCTION_PREFIX + rel.id;
+        const pseudo = { label: rel.junction.table, fields: {} };
+        const jTable = renderTable(jId, pseudo, { isJunction: true, rel });
+        layer.appendChild(jTable);
+        tableEls[jId] = jTable;
+      });
+    }
+
+    canvas.append(svg, layer);
     container.appendChild(canvas);
 
-    const redraw = () => drawEdges(svg, canvas, rels);
-    requestAnimationFrame(redraw);
-    resizeObs = new ResizeObserver(redraw);
-    resizeObs.observe(canvas);
-    resizeObs.observe(grid);
+    applyPositions();
+    requestAnimationFrame(() => {
+      redrawEdges();
+      resizeObs = new ResizeObserver(redrawEdges);
+      resizeObs.observe(canvas);
+      resizeObs.observe(layer);
+    });
   }
 
   render();
+
   return {
     refresh: render,
     setSelected(id) {
       localSelected = id;
-      render();
+      container.querySelectorAll(".erd-table").forEach((t) => {
+        t.classList.toggle("selected", t.dataset.entityId === id);
+      });
+      redrawEdges();
+    },
+    resetLayout() {
+      resetMapPositions(schema);
+      layoutAll();
+      applyPositions();
+      redrawEdges();
+      emit();
+      if (onResetLayout) onResetLayout();
     },
   };
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
