@@ -2,7 +2,7 @@
 
 export const PANEL_HELP = {
   entities:
-    "Entities are the nouns in your schema — each becomes a SQLite table. Pick a primitive that matches how the entity is used.",
+    "Entities are the nouns in your schema — each becomes a SQLite table. Entities are the things you want to organize Every workspace starts with one or more entities, and it is a type of item that you want to keep track of.",
   connections:
     "Connections define how entities relate. Storage type controls whether links live as a foreign key, a junction table, or a mirrored text field.",
   views:
