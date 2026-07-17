@@ -229,7 +229,7 @@ export function renderWorkspaceMap({
     canvas.className = "erd-canvas";
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.className = "erd-lines";
+    svg.setAttribute("class", "erd-lines");
     svg.setAttribute("aria-hidden", "true");
 
     const grid = document.createElement("div");
