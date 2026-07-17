@@ -245,18 +245,31 @@
       "container_entity": "notebook",
       "label": "Notes",
       "primary": true,
-      "columns_from_fields": ["title", "body", "references"]
+      "joins": [{ "relationship_id": "tag_tags_note" }],
+      "columns": [
+        { "id": "primary:title", "source": "primary", "field": "title", "mode": "edit" },
+        { "id": "primary:body", "source": "primary", "field": "body", "mode": "edit" },
+        { "id": "primary:references", "source": "primary", "field": "references", "mode": "edit" },
+        { "id": "join:tag_tags_note", "source": "join", "relationship_id": "tag_tags_note", "mode": "chip" }
+      ]
     },
     {
       "id": "references_catalog",
-      "type": "catalog",
+      "type": "grid",
       "entity": "reference",
       "label": "References",
-      "sort_by": "created_at desc"
+      "sort_by": "created_at desc",
+      "joins": [{ "relationship_id": "reference_tags_note" }],
+      "columns": [
+        { "id": "primary:title", "source": "primary", "field": "title", "mode": "edit" },
+        { "id": "primary:link", "source": "primary", "field": "link", "mode": "edit" },
+        { "id": "primary:type", "source": "primary", "field": "type", "mode": "edit" },
+        { "id": "join:reference_tags_note", "source": "join", "relationship_id": "reference_tags_note", "mode": "chip" }
+      ]
     },
     {
       "id": "tags_catalog",
-      "type": "catalog",
+      "type": "grid",
       "entity": "tag",
       "label": "Tags"
     }

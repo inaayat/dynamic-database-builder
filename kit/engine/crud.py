@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Optional
 
-from kit.engine.junction import get_tag_names_for_note
+from kit.engine.junction import enrich_row_links
 from kit.engine.projection import sync_projection_field_to_catalog
 from kit.engine.sql import q
 from kit.engine.serialize import row_from_api, row_to_api
@@ -39,8 +39,7 @@ def list_rows(
     result = []
     for r in rows:
         item = row_to_api(entity.fields, dict(r), conv)
-        if entity_id == "note" and container_id:
-            item["tags"] = get_tag_names_for_note(conn, container_id, item["id"])
+        enrich_row_links(conn, package, entity_id, item, container_id)
         result.append(item)
     return result
 
@@ -67,8 +66,7 @@ def get_row(
     if not row:
         return None
     item = row_to_api(entity.fields, dict(row), _conventions(package))
-    if entity_id == "note" and container_id:
-        item["tags"] = get_tag_names_for_note(conn, container_id, item["id"])
+    enrich_row_links(conn, package, entity_id, item, container_id)
     return item
 
 
@@ -103,10 +101,16 @@ def patch_row(
             values,
         )
 
-    if entity_id == "note" and container_id and "references" in allowed:
-        rel = next((r for r in package.relationships if r.id == "reference_tags_note"), None)
-        if rel and rel.projection and rel.projection.enabled:
-            sync_projection_field_to_catalog(conn, package, rel, container_id, int(row_id))
+    if container_id and "references" in allowed:
+        for rel in package.relationships:
+            if (
+                rel.projection
+                and rel.projection.enabled
+                and rel.projection.target_entity == entity_id
+                and rel.projection.target_field in allowed
+            ):
+                sync_projection_field_to_catalog(conn, package, rel, container_id, int(row_id))
+                break
 
     conn.commit()
     return get_row(conn, package, entity_id, row_id, container_id)

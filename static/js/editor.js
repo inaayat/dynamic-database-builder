@@ -1,10 +1,12 @@
 import { initDesignTab } from "./design/design-tab.js";
-import { renderCatalogView } from "./views/catalog-view.js";
+import { mountCustomizePanel } from "./views/customize-panel.js";
 import { renderGridView } from "./views/grid-view.js";
+import { ensureViewShape } from "./view-columns.js";
 
 let schema = null;
 let activeViewId = null;
 let designTab = null;
+let customizePanel = null;
 
 const tabs = document.querySelectorAll(".tab[data-mode]");
 const panels = document.querySelectorAll(".panel[data-mode]");
@@ -49,6 +51,7 @@ async function loadSchema() {
       `${schema.site.id} · schema ${schema.schema_version}`;
 
     renderViewTabs();
+    initCustomizePanel();
     try {
       initDesign();
     } catch (err) {
@@ -84,7 +87,30 @@ function initDesign() {
   });
 }
 
-function renderViewTabs() {
+function initCustomizePanel() {
+  const panelEl = document.getElementById("customize-panel");
+  const btn = document.getElementById("customize-btn");
+  if (!panelEl || !btn) return;
+  customizePanel = mountCustomizePanel({
+    panelEl,
+    getSchema: () => schema,
+    setSchema: (next) => {
+      schema = next;
+      renderViewTabs(false);
+    },
+    getActiveViewId: () => activeViewId,
+    onViewRefresh: () => {
+      if (activeViewId) showView(activeViewId);
+    },
+  });
+  btn.addEventListener("click", () => {
+    if (customizePanel.isOpen()) customizePanel.close();
+    else customizePanel.open();
+  });
+  document.addEventListener("schema-views-updated", () => renderViewTabs(false));
+}
+
+function renderViewTabs(switchToFirst = true) {
   const nav = document.getElementById("view-tabs");
   const exportBar = document.getElementById("export-bar");
   if (!nav || !schema) return;
@@ -92,7 +118,7 @@ function renderViewTabs() {
 
   (schema.views || []).forEach((view, i) => {
     const btn = document.createElement("button");
-    btn.className = "view-tab" + (i === 0 ? " active" : "");
+    btn.className = "view-tab" + ((switchToFirst && i === 0) || view.id === activeViewId ? " active" : "");
     btn.textContent = view.label;
     btn.dataset.viewId = view.id;
     btn.addEventListener("click", () => {
@@ -118,7 +144,9 @@ function renderViewTabs() {
     exportBar.append(jsonBtn, xlsxBtn);
   }
 
-  if (schema.views?.length) showView(schema.views[0].id);
+  if (schema.views?.length && switchToFirst) showView(schema.views[0].id);
+  else if (activeViewId) showView(activeViewId);
+  if (customizePanel?.isOpen()) customizePanel.refresh();
 }
 
 async function showView(viewId) {
@@ -128,19 +156,8 @@ async function showView(viewId) {
   if (!mount || !view) return;
 
   const notebookId = getDefaultContainerId();
-
-  if (view.type === "grid") {
-    await renderGridView({ container: mount, schema, notebookId, view });
-  } else if (view.type === "catalog") {
-    await renderCatalogView({
-      container: mount,
-      schema,
-      entityId: view.entity,
-      notebookId,
-    });
-  } else {
-    mount.innerHTML = `<p class="muted">View type <code>${view.type}</code> not implemented yet.</p>`;
-  }
+  ensureViewShape(view, schema);
+  await renderGridView({ container: mount, schema, notebookId, view });
 }
 
 loadSchema();

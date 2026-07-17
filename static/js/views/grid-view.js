@@ -1,11 +1,22 @@
 import { createAutosave } from "../autosave-row.js";
 import {
+  defaultNewRow,
+  entityLinksUrl,
+  entityListUrl,
+  entityRowUrl,
+  displayFieldForEntity,
+  junctionContainerId,
+  linkedEntityId,
+  rowLinkData,
+} from "../entity-api.js";
+import { columnLabel, getViewColumns } from "../view-columns.js";
+import { openChipPicker } from "../widgets/chip-picker.js";
+import {
   renderBoxStack,
   renderBulletEditor,
   renderEnumSelect,
   renderTextInput,
 } from "../widgets/field-renderers.js";
-import { openThemeModal } from "../widgets/tag-modal.js";
 
 export async function renderGridView({
   container,
@@ -13,121 +24,301 @@ export async function renderGridView({
   notebookId,
   view: viewProp,
 }) {
-  container.innerHTML = "<p class='muted'>Loading notes…</p>";
+  container.innerHTML = "<p class='muted'>Loading…</p>";
   try {
     const view = viewProp || schema.views.find((v) => v.type === "grid");
-    const columns = view?.columns_from_fields || ["title", "body", "references"];
-    const entity = schema.entity_types[view?.entity || "note"];
+    const entityId = view?.entity;
+    if (!entityId) throw new Error("No grid view configured");
+    const entity = schema.entity_types[entityId];
     const fields = entity?.fields || {};
+    const columns = getViewColumns(view, schema);
+    const entityLabel = entity?.label || entityId;
+    const containerId = view?.container_entity ? notebookId : null;
 
-    const [notesRes, tagsRes] = await Promise.all([
-      fetch(`/api/notes?notebook_id=${encodeURIComponent(notebookId)}`),
-      fetch("/api/tags"),
-    ]);
-    if (!notesRes.ok) throw new Error(`Notes API: HTTP ${notesRes.status}`);
-    if (!tagsRes.ok) throw new Error(`Tags API: HTTP ${tagsRes.status}`);
-    const notes = await notesRes.json();
-    const tags = await tagsRes.json();
-    if (!Array.isArray(notes)) throw new Error("Unexpected notes response");
+    const chipCols = columns.filter((c) => c.source === "join" && c.mode === "chip");
+    const linkedCatalogs = {};
+    await Promise.all(
+      chipCols.map(async (col) => {
+        const linkedId = linkedEntityId(schema, col.relationship_id, entityId);
+        if (!linkedId || linkedCatalogs[linkedId]) return;
+        const linkedView = schema.views?.find((v) => v.entity === linkedId);
+        const linkedContainer = linkedView?.container_entity ? notebookId : null;
+        const res = await fetch(entityListUrl(linkedId, linkedContainer));
+        if (res.ok) linkedCatalogs[linkedId] = await res.json();
+      })
+    );
+
+    const rowsRes = await fetch(entityListUrl(entityId, containerId));
+    if (!rowsRes.ok) throw new Error(`API: HTTP ${rowsRes.status}`);
+    const rows = await rowsRes.json();
+    if (!Array.isArray(rows)) throw new Error("Unexpected list response");
 
     container.innerHTML = "";
-  const toolbar = document.createElement("div");
-  toolbar.className = "view-toolbar";
-  const status = document.createElement("span");
-  status.className = "save-status";
-  const addBtn = document.createElement("button");
-  addBtn.className = "btn btn-primary";
-  addBtn.textContent = "+ Note";
-  addBtn.addEventListener("click", async () => {
-    await fetch(`/api/notes?notebook_id=${encodeURIComponent(notebookId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "New note", status: "draft" }),
+    const toolbar = document.createElement("div");
+    toolbar.className = "view-toolbar";
+    const status = document.createElement("span");
+    status.className = "save-status";
+    const addBtn = document.createElement("button");
+    addBtn.className = "btn btn-primary";
+    addBtn.textContent = `+ ${entityLabel}`;
+    addBtn.addEventListener("click", async () => {
+      await fetch(entityListUrl(entityId, containerId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(defaultNewRow(schema, entityId)),
+      });
+      renderGridView({ container, schema, notebookId, view });
     });
-    renderGridView({ container, schema, notebookId });
-  });
-  toolbar.append(addBtn, status);
-  container.appendChild(toolbar);
+    toolbar.append(addBtn, status);
+    container.appendChild(toolbar);
 
-  const table = document.createElement("table");
-  table.className = "data-grid";
-  const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  headRow.innerHTML = "<th>#</th>" + columns.map((c) => `<th>${fields[c]?.editor?.header || c}</th>`).join("") + "<th>Tags</th><th></th>";
-  thead.appendChild(headRow);
-  table.appendChild(thead);
+    const tableEl = document.createElement("table");
+    tableEl.className = "data-grid";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    headRow.innerHTML =
+      "<th>#</th>" +
+      columns.map((c) => `<th>${columnLabel(c, schema, view)}</th>`).join("");
+    thead.appendChild(headRow);
+    tableEl.appendChild(thead);
 
-  const tbody = document.createElement("tbody");
-  notes.forEach((note) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="row-id">${note.id}</td>`;
-    const payloads = { ...note };
+    const tbody = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="row-id">${row.id}</td>`;
+      const payloads = { ...row };
 
-    const autosave = createAutosave({
-      debounceMs: 600,
-      onSave: async (payload) => {
-        const body = {};
-        columns.forEach((c) => {
-          if (payload[c] !== undefined) body[c] = payload[c];
-        });
-        const res = await fetch(
-          `/api/notes/${note.id}?notebook_id=${encodeURIComponent(notebookId)}`,
-          { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-        );
-        if (!res.ok) throw new Error(await res.text());
-      },
-    });
+      const primaryFields = columns
+        .filter((c) => c.source === "primary" && c.mode === "edit")
+        .map((c) => c.field);
 
-    columns.forEach((col) => {
-      const td = document.createElement("td");
-      const fdef = fields[col] || {};
-      const onChange = (val) => {
-        payloads[col] = val;
-        autosave.scheduleSave(payloads, status);
-      };
-      if (fdef.type === "bullet_list") {
-        td.appendChild(renderBulletEditor(note[col], onChange));
-      } else if (fdef.type === "enum") {
-        td.appendChild(renderEnumSelect(note[col], fdef.options, onChange));
-      } else if (fdef.editor?.widget === "box_stack" || fdef.type === "multiline_text") {
-        td.appendChild(renderBoxStack(note[col], onChange));
-      } else {
-        td.appendChild(renderTextInput(note[col], onChange));
-      }
-      tr.appendChild(td);
-    });
+      const autosave = createAutosave({
+        debounceMs: 600,
+        onSave: async (payload) => {
+          const body = {};
+          primaryFields.forEach((f) => {
+            if (payload[f] !== undefined) body[f] = payload[f];
+          });
+          const res = await fetch(entityRowUrl(entityId, row.id, containerId), {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) throw new Error(await res.text());
+        },
+      });
 
-    const tagsTd = document.createElement("td");
-    const pills = document.createElement("span");
-    pills.className = "theme-pills";
-    pills.textContent = (note.tags || []).join(", ") || "—";
-    const editTags = document.createElement("button");
-    editTags.type = "button";
-    editTags.className = "btn-sm";
-    editTags.textContent = "Edit tags";
-    editTags.addEventListener("click", () => {
-      const selected = tags.filter((t) => (note.tags || []).includes(t.name)).map((t) => t.id);
-      openThemeModal({
-        title: `Tags for note #${note.id}`,
-        tags,
-        selectedIds: selected,
-        onSave: async (tag_ids) => {
-          await fetch(
-            `/api/notes/${note.id}/tags?notebook_id=${encodeURIComponent(notebookId)}`,
-            { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tag_ids }) }
+      columns.forEach((col) => {
+        const td = document.createElement("td");
+        if (col.source === "join" && col.mode === "chip") {
+          td.appendChild(
+            renderChipCell({
+              col,
+              row,
+              schema,
+              view,
+              entityId,
+              notebookId,
+              containerId,
+              linkedCatalogs,
+              onRefresh: () => renderGridView({ container, schema, notebookId, view }),
+            })
           );
-          renderGridView({ container, schema, notebookId });
+        } else if (col.source === "join" && col.field) {
+          td.appendChild(
+            renderJoinFieldCell({
+              col,
+              row,
+              schema,
+              view,
+              entityId,
+              notebookId,
+              containerId,
+              onRefresh: () => renderGridView({ container, schema, notebookId, view }),
+            })
+          );
+        } else if (col.source === "primary") {
+          const fdef = fields[col.field] || {};
+          if (col.mode === "view") {
+            td.textContent = row[col.field] ?? "—";
+          } else {
+            const onChange = (val) => {
+              payloads[col.field] = val;
+              autosave.scheduleSave(payloads, status);
+            };
+            if (fdef.type === "bullet_list") {
+              td.appendChild(renderBulletEditor(row[col.field], onChange));
+            } else if (fdef.type === "enum") {
+              td.appendChild(renderEnumSelect(row[col.field], fdef.options, onChange));
+            } else if (fdef.editor?.widget === "box_stack" || fdef.type === "multiline_text") {
+              td.appendChild(renderBoxStack(row[col.field], onChange));
+            } else {
+              td.appendChild(renderTextInput(row[col.field], onChange));
+            }
+          }
+        }
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+    tableEl.appendChild(tbody);
+    container.appendChild(tableEl);
+  } catch (err) {
+    container.innerHTML = `<p class="status error">Failed to load: ${err.message}</p>`;
+  }
+}
+
+function renderChipCell({
+  col,
+  row,
+  schema,
+  view,
+  entityId,
+  notebookId,
+  containerId,
+  linkedCatalogs,
+  onRefresh,
+}) {
+  const wrap = document.createElement("span");
+  const pills = document.createElement("span");
+  pills.className = "theme-pills";
+  const linkData = rowLinkData(row, col.relationship_id);
+  pills.textContent = (linkData.names || []).join(", ") || "—";
+
+  const linkedId = linkedEntityId(schema, col.relationship_id, entityId);
+  const linkedEntity = linkedId ? schema.entity_types[linkedId] : null;
+  const catalog = linkedId ? linkedCatalogs[linkedId] || [] : [];
+  const linkContainer = junctionContainerId(schema, col.relationship_id, notebookId, view);
+  const linkedView = schema.views?.find((v) => v.entity === linkedId);
+
+  if (linkedEntity) {
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn-sm";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => {
+      openChipPicker({
+        title: `${columnLabel(col, schema, view)} — #${row.id}`,
+        items: catalog,
+        entity: linkedEntity,
+        entityId: linkedId,
+        containerId: linkedView?.container_entity ? notebookId : null,
+        schema,
+        selectedIds: linkData.ids,
+        onSave: async (linked_ids) => {
+          await fetch(entityLinksUrl(entityId, row.id, col.relationship_id, linkContainer), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ linked_ids }),
+          });
+          onRefresh();
         },
       });
     });
-    tagsTd.append(pills, " ", editTags);
-    tr.appendChild(tagsTd);
-
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  container.appendChild(table);
-  } catch (err) {
-    container.innerHTML = `<p class="status error">Failed to load notes: ${err.message}</p>`;
+    wrap.append(pills, " ", editBtn);
+  } else {
+    wrap.appendChild(pills);
   }
+  return wrap;
+}
+
+function renderJoinFieldCell({
+  col,
+  row,
+  schema,
+  view,
+  entityId,
+  notebookId,
+  containerId,
+  onRefresh,
+}) {
+  const wrap = document.createElement("span");
+  wrap.className = "join-field-cell";
+  const linkedId = linkedEntityId(schema, col.relationship_id, entityId);
+  const linkedEntity = linkedId ? schema.entity_types[linkedId] : null;
+  if (!linkedEntity) {
+    wrap.textContent = "—";
+    return wrap;
+  }
+
+  const linkData = rowLinkData(row, col.relationship_id);
+  const linkedView = schema.views?.find((v) => v.entity === linkedId);
+  const linkedListContainer = linkedView?.container_entity ? notebookId : null;
+  const linkContainer = junctionContainerId(schema, col.relationship_id, notebookId, view);
+  const displayField = displayFieldForEntity(linkedEntity);
+
+  if (col.mode === "view") {
+    if (col.field === displayField) {
+      wrap.textContent = (linkData.names || []).join(", ") || "—";
+    } else {
+      wrap.textContent = "—";
+    }
+    return wrap;
+  }
+
+  if (linkData.ids?.length === 1 && col.field === displayField) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "cell-input";
+    input.value = linkData.names[0] || "";
+    input.addEventListener("blur", async () => {
+      if (input.value === (linkData.names[0] || "")) return;
+      await fetch(entityRowUrl(linkedId, linkData.ids[0], linkedListContainer), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [col.field]: input.value }),
+      });
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  if (linkData.ids?.length > 1 && col.field === displayField) {
+    const names = document.createElement("span");
+    names.className = "join-field-names";
+    names.textContent = (linkData.names || []).join(", ");
+    wrap.appendChild(names);
+  }
+
+  const addInput = document.createElement("input");
+  addInput.type = "text";
+  addInput.className = "cell-input join-field-quick-add";
+  addInput.placeholder = `+ New ${linkedEntity.label || linkedId}…`;
+  async function submitQuickAdd() {
+    const name = addInput.value.trim();
+    if (!name) return;
+    addInput.disabled = true;
+    try {
+      const body = defaultNewRow(schema, linkedId);
+      body[col.field] = name;
+      const res = await fetch(entityListUrl(linkedId, linkedListContainer), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const created = await res.json();
+      const linked_ids = [...(linkData.ids || []), created.id];
+      await fetch(entityLinksUrl(entityId, row.id, col.relationship_id, linkContainer), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linked_ids }),
+      });
+      onRefresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      addInput.disabled = false;
+    }
+  }
+  addInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitQuickAdd();
+    }
+  });
+  addInput.addEventListener("blur", () => submitQuickAdd());
+  wrap.appendChild(addInput);
+  return wrap;
 }

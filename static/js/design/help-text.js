@@ -13,7 +13,7 @@ export const PANEL_HELP = {
   connections:
     "Connections describe how Items relate: one-to-many, many-to-many, or an optional link.",
   views:
-    "Tabs in Workspace. Table = spreadsheet-style editing of many rows; List = a simpler roster for lookup Items (tags, references).",
+    "Tabs in Workspace. Pick the primary Item, connections, and which columns appear — editable, read-only, or chips.",
 };
 
 export const PRIMITIVE_HELP = {
@@ -60,14 +60,9 @@ export const STORAGE_HELP = {
 
 export const VIEW_HELP = {
   grid: {
-    label: "Table",
-    summary: "Spreadsheet-style — edit many rows with inline fields and columns from your schema.",
-    bestFor: ["Notes", "Tasks", "Students", "main working data"],
-  },
-  catalog: {
-    label: "List",
-    summary: "Compact roster — simpler rows, good for lookup Items you pick from elsewhere.",
-    bestFor: ["Tags", "References", "Teachers", "Subjects"],
+    label: "Tab",
+    summary: "A workspace view — configure which Item, connections, and columns appear.",
+    bestFor: ["Notes", "Tags", "References", "any working data"],
   },
 };
 
@@ -89,6 +84,7 @@ export function storageLabel(id) {
 }
 
 export function viewLabel(id) {
+  if (id === "catalog") return VIEW_HELP.grid.label;
   return VIEW_HELP[id]?.label || id;
 }
 

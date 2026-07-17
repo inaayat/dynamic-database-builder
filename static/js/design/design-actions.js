@@ -8,6 +8,11 @@ import {
   ITEM_PRIMITIVE,
 } from "./field-presets.js";
 import {
+  addPrimaryColumn,
+  ensureViewShape,
+  syncViewColumnsFromEntity,
+} from "../view-columns.js";
+import {
   helpParagraph,
   STORAGE_HELP,
   storageLabel,
@@ -60,31 +65,33 @@ export function defaultViewLabelForEntity(entity) {
   return entity?.label_plural || entity?.label || "Items";
 }
 
-export function createView(schema, { entityId, type, label }) {
+export function createView(schema, { entityId, label }) {
   const entityDef = schema.entity_types[entityId];
   if (!entityDef) return { error: "Type not found." };
-  if (type !== "grid" && type !== "catalog") return { error: "Pick Table or List." };
 
-  let viewId = `${entityId}_${type}`;
+  let viewId = `${entityId}_grid`;
   if ((schema.views || []).some((v) => v.id === viewId)) {
-    viewId = `${entityId}_${type}_${(schema.views || []).length + 1}`;
+    viewId = `${entityId}_grid_${(schema.views || []).length + 1}`;
   }
 
   const view = {
     id: viewId,
-    type,
+    type: "grid",
     entity: entityId,
     label: label?.trim() || defaultViewLabelForEntity(entityDef),
+    joins: [],
+    columns: [],
   };
-  if (type === "grid") {
-    view.primary = !(schema.views || []).some((v) => v.primary);
-    view.columns_from_fields = Object.entries(entityDef.fields || {})
-      .filter(([, f]) => f.editor?.column && !f.design_only)
-      .map(([n]) => n);
-    const container = Object.entries(schema.entity_types).find(
-      ([, e]) => e.primitive === "container"
-    );
-    if (container) view.container_entity = container[0];
+  if (!(schema.views || []).some((v) => v.primary)) {
+    view.primary = true;
+  }
+  ensureViewShape(view, schema);
+  syncViewColumnsFromEntity(view, schema);
+  const container = Object.entries(schema.entity_types).find(
+    ([, e]) => e.primitive === "container"
+  );
+  if (container && entityDef.primitive === "primary_row") {
+    view.container_entity = container[0];
   }
   schema.views = schema.views || [];
   schema.views.push(view);
@@ -95,50 +102,27 @@ export function removeView(schema, viewId) {
   schema.views = (schema.views || []).filter((v) => v.id !== viewId);
 }
 
-export const VIEW_TYPE_OPTIONS = [
-  { value: "grid", label: "Table" },
-  { value: "catalog", label: "List" },
-];
-
 export function updateViewLabel(view, label) {
   const trimmed = label?.trim();
   if (!trimmed) return;
   view.label = trimmed;
 }
 
-export function updateViewType(view, schema, newType) {
-  if (newType !== "grid" && newType !== "catalog") return { error: "Invalid tab type." };
-  if (view.type === newType) return { ok: true };
-  view.type = newType;
-  const entityDef = schema.entity_types[view.entity];
-  if (newType === "grid") {
-    if (!schema.views?.some((v) => v.primary && v.id !== view.id)) {
-      view.primary = true;
-    }
-    view.columns_from_fields = Object.entries(entityDef?.fields || {})
-      .filter(([, f]) => f.editor?.column && !f.design_only)
-      .map(([n]) => n);
-    const container = Object.entries(schema.entity_types).find(
-      ([, e]) => e.primitive === "container"
-    );
-    if (container) view.container_entity = container[0];
-  } else {
-    delete view.primary;
-    delete view.columns_from_fields;
-    delete view.container_entity;
-  }
-  return { ok: true };
-}
-
 export function updateViewEntity(view, schema, entityId) {
   if (!schema.entity_types[entityId]) return { error: "Type not found." };
   view.entity = entityId;
-  if (view.type === "grid") {
-    const entityDef = schema.entity_types[entityId];
-    view.columns_from_fields = Object.entries(entityDef?.fields || {})
-      .filter(([, f]) => f.editor?.column && !f.design_only)
-      .map(([n]) => n);
-  }
+  view.joins = (view.joins || []).filter((j) => {
+    const rel = (schema.relationships || []).find((r) => r.id === j.relationship_id);
+    return rel && (rel.from === entityId || rel.to === entityId);
+  });
+  view.columns = (view.columns || []).filter(
+    (c) =>
+      c.source === "primary" ||
+      (c.source === "join" &&
+        (view.joins || []).some((j) => j.relationship_id === c.relationship_id))
+  );
+  ensureViewShape(view, schema);
+  syncViewColumnsFromEntity(view, schema);
   return { ok: true };
 }
 
@@ -261,10 +245,7 @@ export function addValueToEntity(schema, entityId, { label, type }) {
   entity.fields[name] = defaultFieldDef(type, trimmed);
   const gridView = (schema.views || []).find((v) => v.type === "grid" && v.entity === entityId);
   if (gridView && entity.fields[name].editor?.column) {
-    gridView.columns_from_fields = gridView.columns_from_fields || [];
-    if (!gridView.columns_from_fields.includes(name)) {
-      gridView.columns_from_fields.push(name);
-    }
+    addPrimaryColumn(gridView, schema, name);
   }
   return { kind: "value", field: name };
 }
@@ -708,9 +689,10 @@ export function removeField(schema, entityId, fieldName) {
   const relId = field?.relationship_id;
   delete entity.fields[fieldName];
   (schema.views || []).forEach((v) => {
-    if (v.columns_from_fields) {
-      v.columns_from_fields = v.columns_from_fields.filter((c) => c !== fieldName);
-    }
+    ensureViewShape(v, schema);
+    v.columns = (v.columns || []).filter(
+      (c) => !(c.source === "primary" && c.field === fieldName)
+    );
   });
   if (relId && field?.type === "item_link") {
     const stillUsed = Object.values(schema.entity_types || {}).some((ent) =>

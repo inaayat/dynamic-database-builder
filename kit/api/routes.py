@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -12,9 +12,6 @@ from kit.engine.export.json_export import export_json_zip
 from kit.engine.export.xlsx_export import export_xlsx
 from kit.engine.runtime import Runtime
 
-router = APIRouter(prefix="/api")
-
-
 class TagRefsBody(BaseModel):
     tags: list[dict[str, Any]]
 
@@ -23,11 +20,26 @@ class TagIdsBody(BaseModel):
     tag_ids: list[str]
 
 
+class LinkedIdsBody(BaseModel):
+    linked_ids: list[Any]
+
+
 def _runtime(request: Request) -> Runtime:
     return request.app.state.runtime
 
 
+def _coerce_row_id(entity_id: str, row_id: str) -> Any:
+    if entity_id == "note":
+        try:
+            return int(row_id)
+        except ValueError:
+            return row_id
+    return row_id
+
+
 def register_routes() -> APIRouter:
+    router = APIRouter(prefix="/api")
+
     @router.get("/notebooks")
     def list_notebooks(request: Request):
         return _runtime(request).list_rows("notebook")
@@ -99,6 +111,96 @@ def register_routes() -> APIRouter:
         if not row:
             raise HTTPException(404, "Tag not found")
         return row
+
+    @router.get("/entities/{entity_id}")
+    def list_entity_rows(
+        request: Request,
+        entity_id: str,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        if entity_id not in rt.package.entity_ids():
+            raise HTTPException(404, f"Unknown entity: {entity_id}")
+        return rt.list_rows(entity_id, container_id)
+
+    @router.post("/entities/{entity_id}")
+    def create_entity_row(
+        request: Request,
+        entity_id: str,
+        body: dict,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        if entity_id not in rt.package.entity_ids():
+            raise HTTPException(404, f"Unknown entity: {entity_id}")
+        return rt.create_row(entity_id, body, container_id)
+
+    @router.get("/entities/{entity_id}/{row_id}")
+    def get_entity_row(
+        request: Request,
+        entity_id: str,
+        row_id: str,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        row = rt.get_row(entity_id, _coerce_row_id(entity_id, row_id), container_id)
+        if not row:
+            raise HTTPException(404, "Row not found")
+        return row
+
+    @router.patch("/entities/{entity_id}/{row_id}")
+    def patch_entity_row(
+        request: Request,
+        entity_id: str,
+        row_id: str,
+        body: dict,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        row = rt.patch_row(entity_id, _coerce_row_id(entity_id, row_id), body, container_id)
+        if not row:
+            raise HTTPException(404, "Row not found")
+        return row
+
+    @router.get("/entities/{entity_id}/{row_id}/links/{relationship_id}")
+    def get_entity_links(
+        request: Request,
+        entity_id: str,
+        row_id: str,
+        relationship_id: str,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        try:
+            return rt.get_entity_links(
+                entity_id,
+                _coerce_row_id(entity_id, row_id),
+                relationship_id,
+                container_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.put("/entities/{entity_id}/{row_id}/links/{relationship_id}")
+    def put_entity_links(
+        request: Request,
+        entity_id: str,
+        row_id: str,
+        relationship_id: str,
+        body: LinkedIdsBody,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        try:
+            return rt.set_entity_links(
+                entity_id,
+                _coerce_row_id(entity_id, row_id),
+                relationship_id,
+                body.linked_ids,
+                container_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @router.get("/export/json.zip")
     def export_json(request: Request):

@@ -8,7 +8,7 @@ from typing import Callable, Optional, TypeVar
 from kit.engine.crud import create_row, delete_row, get_row, list_rows, patch_row
 from kit.engine.db import connect, get_db_path, init_meta
 from kit.engine.ddl import apply_schema_ddl
-from kit.engine.junction import get_junction_refs, set_note_tags, set_tags
+from kit.engine.junction import get_junction_refs, get_linked_ids, get_linked_labels, set_linked_ids, set_tags
 from kit.engine.seed import apply_seed
 from kit.schema.model import SitePackage
 
@@ -77,8 +77,56 @@ class Runtime:
 
     def set_note_tags(self, notebook_id: str, note_id: int, tag_ids: list[str]) -> dict:
         def _op(conn):
-            set_note_tags(conn, self.package, notebook_id, note_id, tag_ids)
+            set_linked_ids(
+                conn,
+                self.package,
+                "tag_tags_note",
+                "note",
+                note_id,
+                tag_ids,
+                notebook_id,
+            )
             return get_row(conn, self.package, "note", note_id, notebook_id)
+
+        return self._with_conn(_op)
+
+    def get_entity_links(
+        self,
+        entity_id: str,
+        row_id: Any,
+        relationship_id: str,
+        container_id: Optional[str] = None,
+    ) -> dict:
+        def _op(conn):
+            ids = get_linked_ids(
+                conn, self.package, relationship_id, entity_id, row_id, container_id
+            )
+            names = get_linked_labels(
+                conn, self.package, relationship_id, entity_id, row_id, container_id
+            )
+            return {"relationship_id": relationship_id, "ids": ids, "names": names}
+
+        return self._with_conn(_op)
+
+    def set_entity_links(
+        self,
+        entity_id: str,
+        row_id: Any,
+        relationship_id: str,
+        linked_ids: list[Any],
+        container_id: Optional[str] = None,
+    ) -> dict:
+        def _op(conn):
+            set_linked_ids(
+                conn,
+                self.package,
+                relationship_id,
+                entity_id,
+                row_id,
+                linked_ids,
+                container_id,
+            )
+            return get_row(conn, self.package, entity_id, row_id, container_id)
 
         return self._with_conn(_op)
 

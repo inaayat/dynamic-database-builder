@@ -14,12 +14,203 @@ def _tag_key(ref: dict, junction_keys: list[str], from_col: str) -> tuple:
     return tuple(ref[k] for k in junction_keys if k != from_col)
 
 
+def junction_perspective(rel: Relationship, entity_id: str) -> tuple[str, str, str]:
+    """Return anchor_col, linked_col, linked_entity_id from entity_id's side."""
+    if entity_id == rel.to:
+        return f"{rel.to}_id", f"{rel.from_}_id", rel.from_
+    if entity_id == rel.from_:
+        return f"{rel.from_}_id", f"{rel.to}_id", rel.to
+    raise ValueError(f"Entity {entity_id!r} not in relationship {rel.id!r}")
+
+
+def is_simple_chip_junction(rel: Relationship, entity_id: str) -> bool:
+    """M:N junction editable via a list of linked row ids (+ optional notebook scope)."""
+    if rel.storage != "junction" or not rel.junction:
+        return False
+    if entity_id not in (rel.from_, rel.to):
+        return False
+    keys = set(rel.junction.keys)
+    id_keys = {f"{rel.from_}_id", f"{rel.to}_id"}
+    return keys <= id_keys | {"notebook_id"}
+
+
+def _scope_values(rel: Relationship, container_id: Optional[str]) -> dict[str, Any]:
+    scope: dict[str, Any] = {}
+    if container_id and rel.junction and "notebook_id" in rel.junction.keys:
+        scope["notebook_id"] = container_id
+    return scope
+
+
+def _display_field(entity_fields: dict[str, dict]) -> str:
+    for fname in ("name", "title"):
+        if fname in entity_fields:
+            return fname
+    for fname, fdef in entity_fields.items():
+        if fname in ("id", "notebook_id"):
+            continue
+        if fdef.get("type") in ("text", "enum", "url"):
+            return fname
+    return "id"
+
+
 def get_junction_refs(conn: sqlite3.Connection, table: str, from_col: str, from_id: str) -> list[dict]:
     rows = conn.execute(
         f"SELECT * FROM {table} WHERE {from_col} = ?",
         (from_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_linked_ids(
+    conn: sqlite3.Connection,
+    package: SitePackage,
+    relationship_id: str,
+    entity_id: str,
+    row_id: Any,
+    container_id: Optional[str] = None,
+) -> list[Any]:
+    rel = next(r for r in package.relationships if r.id == relationship_id)
+    if not rel.junction:
+        raise ValueError(f"Relationship {relationship_id} has no junction")
+    anchor_col, linked_col, _ = junction_perspective(rel, entity_id)
+    table = q(rel.junction.table)
+    conds = [f"{anchor_col} = ?"]
+    vals: list[Any] = [row_id]
+    for key, value in _scope_values(rel, container_id).items():
+        conds.append(f"{key} = ?")
+        vals.append(value)
+    rows = conn.execute(
+        f"SELECT {linked_col} FROM {table} WHERE {' AND '.join(conds)}",
+        vals,
+    ).fetchall()
+    return [r[linked_col] for r in rows]
+
+
+def get_linked_labels(
+    conn: sqlite3.Connection,
+    package: SitePackage,
+    relationship_id: str,
+    entity_id: str,
+    row_id: Any,
+    container_id: Optional[str] = None,
+) -> list[str]:
+    rel = next(r for r in package.relationships if r.id == relationship_id)
+    _, _, linked_entity_id = junction_perspective(rel, entity_id)
+    linked_ids = get_linked_ids(conn, package, relationship_id, entity_id, row_id, container_id)
+    if not linked_ids:
+        return []
+    linked_entity = package.get_entity(linked_entity_id)
+    field = _display_field(linked_entity.fields)
+    table = q(linked_entity.table)
+    labels: list[str] = []
+    for lid in linked_ids:
+        row = conn.execute(
+            f"SELECT {q(field)} FROM {table} WHERE id = ?",
+            (lid,),
+        ).fetchone()
+        if row:
+            labels.append(str(row[field]))
+    return labels
+
+
+def set_linked_ids(
+    conn: sqlite3.Connection,
+    package: SitePackage,
+    relationship_id: str,
+    entity_id: str,
+    row_id: Any,
+    linked_ids: list[Any],
+    container_id: Optional[str] = None,
+) -> None:
+    rel = next(r for r in package.relationships if r.id == relationship_id)
+    if not rel.junction:
+        raise ValueError(f"Relationship {relationship_id} has no junction")
+    if not is_simple_chip_junction(rel, entity_id):
+        raise ValueError(f"Relationship {relationship_id} is not a simple chip junction")
+
+    table = q(rel.junction.table)
+    keys = rel.junction.keys
+    anchor_col, linked_col, _ = junction_perspective(rel, entity_id)
+    scope = _scope_values(rel, container_id)
+
+    conds = [f"{anchor_col} = ?"]
+    vals: list[Any] = [row_id]
+    for key, value in scope.items():
+        conds.append(f"{key} = ?")
+        vals.append(value)
+
+    old_rows = conn.execute(
+        f"SELECT {linked_col} FROM {table} WHERE {' AND '.join(conds)}",
+        vals,
+    ).fetchall()
+    old_ids = {r[linked_col] for r in old_rows}
+    new_ids = set(linked_ids)
+
+    catalog_row = None
+    if rel.projection and rel.projection.enabled and entity_id == rel.from_:
+        ent = package.get_entity(entity_id)
+        row = conn.execute(
+            f"SELECT * FROM {q(ent.table)} WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+        if row:
+            catalog_row = dict(row)
+
+    for lid in sorted(new_ids - old_ids, key=str):
+        row_data = {anchor_col: row_id, linked_col: lid, **scope}
+        insert_vals = [row_data[k] for k in keys]
+        placeholders = ", ".join("?" * len(keys))
+        conn.execute(
+            f"INSERT OR IGNORE INTO {table} ({', '.join(keys)}) VALUES ({placeholders})",
+            insert_vals,
+        )
+        if rel.projection and rel.projection.enabled and catalog_row:
+            target_ref = {**scope, linked_col: lid}
+            if anchor_col not in target_ref:
+                target_ref[anchor_col] = row_id
+            append_projection_line(conn, package, rel, target_ref, catalog_row)
+
+    for lid in sorted(old_ids - new_ids, key=str):
+        delete_conds = [f"{anchor_col} = ?", f"{linked_col} = ?"]
+        delete_vals: list[Any] = [row_id, lid]
+        for key, value in scope.items():
+            delete_conds.append(f"{key} = ?")
+            delete_vals.append(value)
+        conn.execute(
+            f"DELETE FROM {table} WHERE {' AND '.join(delete_conds)}",
+            delete_vals,
+        )
+        if rel.projection and rel.projection.enabled and catalog_row:
+            target_ref = {**scope, linked_col: lid}
+            if anchor_col not in target_ref:
+                target_ref[anchor_col] = row_id
+            remove_projection_line(conn, package, rel, target_ref, catalog_row)
+
+    conn.commit()
+
+
+def enrich_row_links(
+    conn: sqlite3.Connection,
+    package: SitePackage,
+    entity_id: str,
+    row: dict,
+    container_id: Optional[str] = None,
+) -> None:
+    links: dict[str, dict[str, list]] = {}
+    row_id = row.get("id")
+    if row_id is None:
+        return
+    for rel in package.relationships:
+        if not is_simple_chip_junction(rel, entity_id):
+            continue
+        try:
+            ids = get_linked_ids(conn, package, rel.id, entity_id, row_id, container_id)
+            names = get_linked_labels(conn, package, rel.id, entity_id, row_id, container_id)
+        except (ValueError, KeyError):
+            continue
+        links[rel.id] = {"ids": ids, "names": names}
+    if links:
+        row["_links"] = links
 
 
 def set_tags(

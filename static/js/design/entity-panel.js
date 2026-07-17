@@ -1,5 +1,5 @@
+import { removeField } from "./design-actions.js";
 import {
-  defaultEntity,
   defaultFieldDef,
   FIELD_TYPES,
   isPrimaryKey,
@@ -13,6 +13,7 @@ import {
   PRIMITIVE_HELP,
   primitiveLabel,
 } from "./help-text.js";
+import { addPrimaryColumn } from "../view-columns.js";
 
 export function renderEntityPanel({ container, schema, onChange, onSelect, compactHelp = false }) {
   let selectedEntityId = null;
@@ -152,10 +153,7 @@ export function renderEntityPanel({ container, schema, onChange, onSelect, compa
         (v) => v.type === "grid" && v.entity === entityId
       );
       if (gridView && entity.fields[name].editor?.column) {
-        gridView.columns_from_fields = gridView.columns_from_fields || [];
-        if (!gridView.columns_from_fields.includes(name)) {
-          gridView.columns_from_fields.push(name);
-        }
+        addPrimaryColumn(gridView, schema, name);
       }
       selectedField = name;
       emit();
@@ -188,12 +186,7 @@ export function renderEntityPanel({ container, schema, onChange, onSelect, compa
         del.addEventListener("click", (e) => {
           e.stopPropagation();
           if (!confirm(`Remove field "${fname}"?`)) return;
-          delete entity.fields[fname];
-          (schema.views || []).forEach((v) => {
-            if (v.columns_from_fields) {
-              v.columns_from_fields = v.columns_from_fields.filter((c) => c !== fname);
-            }
-          });
+          removeField(schema, entityId, fname);
           if (selectedField === fname) selectedField = null;
           emit();
           render();

@@ -1,11 +1,10 @@
+import { createView } from "./design-actions.js";
 import {
-  helpConceptBlock,
   helpParagraph,
   PANEL_HELP,
   STORAGE_HELP,
   storageLabel,
   VIEW_HELP,
-  viewLabel,
 } from "./help-text.js";
 
 export function renderConnectionPanel({ container, schema, onChange, onSelect, compactHelp = false }) {
@@ -116,8 +115,8 @@ export function renderConnectionPanel({ container, schema, onChange, onSelect, c
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "design-list-btn";
-      btn.textContent = `${view.label} · ${viewLabel(view.type)}`;
-      btn.title = VIEW_HELP[view.type]?.summary || "";
+      btn.textContent = `${view.label} · ${schema.entity_types[view.entity]?.label || view.entity}`;
+      btn.title = VIEW_HELP.grid.summary;
       btn.addEventListener("click", () => onSelect({ type: "view", view }));
       li.appendChild(btn);
       viewList.appendChild(li);
@@ -191,43 +190,14 @@ export function renderConnectionPanel({ container, schema, onChange, onSelect, c
     const entity = prompt(`Which entity is this view for? (${entities.join(", ")}):`, entities[0]);
     if (!entity || !entities.includes(entity)) return;
 
-    const typeChoice = prompt(
-      "How should people look at this information?\n\n" +
-        "Table — view and edit many records quickly\n" +
-        "List — a simple compact list of reusable records\n\n" +
-        "Enter: Table or List",
-      "List"
-    );
-    if (!typeChoice) return;
-    const typeMap = { table: "grid", grid: "grid", list: "catalog", catalog: "catalog" };
-    const type = typeMap[typeChoice.toLowerCase().trim()];
-    if (!type) {
-      alert("Please choose: Table or List");
+    const created = createView(schema, { entityId: entity, label: undefined });
+    if (created.error) {
+      alert(created.error);
       return;
     }
-
-    const id = `${entity}_${type}`;
-    const entityDef = schema.entity_types[entity];
-    const view = {
-      id,
-      type,
-      entity,
-      label: entityDef.label_plural || entityDef.label,
-    };
-    if (type === "grid") {
-      view.primary = !(schema.views || []).some((v) => v.primary);
-      view.columns_from_fields = Object.entries(entityDef.fields || {})
-        .filter(([, f]) => f.editor?.column)
-        .map(([n]) => n);
-      const containerEntity = Object.entries(schema.entity_types).find(
-        ([, e]) => e.primitive === "container"
-      );
-      if (containerEntity) view.container_entity = containerEntity[0];
-    }
-    schema.views = schema.views || [];
-    schema.views.push(view);
+    const newView = (schema.views || []).find((v) => v.id === created.id);
     emit();
-    onSelect({ type: "view", view });
+    if (newView) onSelect({ type: "view", view: newView });
     render();
   }
 

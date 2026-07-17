@@ -84,6 +84,23 @@ class Relationship(BaseModel):
     export: Optional[dict[str, Any]] = None
 
 
+class ViewJoin(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    relationship_id: str
+    alias: Optional[str] = None
+
+
+class ViewColumn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    source: str  # primary | join
+    field: Optional[str] = None
+    relationship_id: Optional[str] = None
+    mode: str = "edit"  # edit | view | chip
+
+
 class View(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -94,6 +111,8 @@ class View(BaseModel):
     primary: bool = False
     container_entity: Optional[str] = None
     columns_from_fields: Optional[list[str]] = None
+    joins: list[ViewJoin] = Field(default_factory=list)
+    columns: list[ViewColumn] = Field(default_factory=list)
     sort_by: Optional[str] = None
 
 

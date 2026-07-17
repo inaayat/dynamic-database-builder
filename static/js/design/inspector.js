@@ -1,3 +1,4 @@
+import { ensureViewShape, getViewColumns } from "../view-columns.js";
 import { FIELD_TYPES } from "./field-presets.js";
 import {
   FIELD_HELP,
@@ -11,7 +12,6 @@ import {
   STORAGE_HELP,
   storageLabel,
   VIEW_HELP,
-  viewLabel,
 } from "./help-text.js";
 
 export function renderInspector({ container, selection, schema, onChange }) {
@@ -90,11 +90,9 @@ export function renderInspector({ container, selection, schema, onChange }) {
 
   if (selection.type === "view") {
     const view = selection.view;
-    const kind = VIEW_HELP[view.type];
+    ensureViewShape(view, schema);
     container.innerHTML = `<h3>${view.label}</h3>`;
-    if (kind) {
-      container.appendChild(helpConceptBlock(kind));
-    }
+    container.appendChild(helpConceptBlock(VIEW_HELP.grid));
     container.appendChild(viewForm(view, schema, () => onChange(schema)));
   }
 }
@@ -303,26 +301,31 @@ function viewForm(view, schema, onChange) {
     })
   );
 
-  const typeHint = document.createElement("p");
-  typeHint.className = "muted";
-  typeHint.textContent = `Layout: ${viewLabel(view.type)}`;
-  wrap.appendChild(typeHint);
-
-  if (view.type === "grid") {
-    const entity = schema.entity_types[view.entity];
-    const cols = view.columns_from_fields || [];
-    wrap.appendChild(
-      labelInput("Table columns (comma-separated)", cols.join(", "), (v) => {
-        view.columns_from_fields = v.split(",").map((s) => s.trim()).filter(Boolean);
-        onChange();
-      })
-    );
-    const available = Object.keys(entity?.fields || {}).join(", ");
-    const hint = document.createElement("p");
-    hint.className = "muted";
-    hint.textContent = `Available fields: ${available}`;
-    wrap.appendChild(hint);
-  }
+  const entity = schema.entity_types[view.entity];
+  const cols = getViewColumns(view, schema)
+    .filter((c) => c.source === "primary")
+    .map((c) => c.field);
+  wrap.appendChild(
+    labelInput("Columns (comma-separated)", cols.join(", "), (v) => {
+      const names = v.split(",").map((s) => s.trim()).filter(Boolean);
+      const joinCols = (view.columns || []).filter((c) => c.source === "join");
+      view.columns = [
+        ...names.map((field) => ({
+          id: `primary:${field}`,
+          source: "primary",
+          field,
+          mode: "edit",
+        })),
+        ...joinCols,
+      ];
+      onChange();
+    })
+  );
+  const available = Object.keys(entity?.fields || {}).join(", ");
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = `Available fields: ${available}`;
+  wrap.appendChild(hint);
 
   return wrap;
 }

@@ -12,6 +12,7 @@ import { renderWorkspaceMap } from "./workspace-map.js";
 const MODE_KEY = "designMode";
 const MAP_DENSITY_KEY = "designMapDensity";
 const MAP_JUNCTION_KEY = "designMapJunctions";
+const MAP_VISIBLE_KEY = "designMapVisible";
 
 export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let workingSchema = structuredClone(getSchema());
@@ -19,6 +20,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   if (mode === "map" || mode === "advanced") mode = "setup";
   let mapDensity = localStorage.getItem(MAP_DENSITY_KEY) || "simple";
   let showJunctionTables = localStorage.getItem(MAP_JUNCTION_KEY) === "true";
+  let showMap = localStorage.getItem(MAP_VISIBLE_KEY) === "true";
   let selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
   let startedBlank = false;
   let mapApi = null;
@@ -33,9 +35,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   howDetails.innerHTML = `
     <summary>How Design works</summary>
     <ol class="design-how-list">
-      <li><strong>Items</strong> — kinds of records you track (editor + map)</li>
+      <li><strong>Items</strong> — kinds of records you track (fields on the left)</li>
       <li><strong>Fields</strong> — values on an Item; pick an Item type to link</li>
-      <li><strong>Workspace tabs</strong> — names and layout in Workspace</li>
+      <li><strong>Workspace tabs</strong> — layout on the right; map is optional</li>
       <li><strong>Apply Changes</strong> — make it live</li>
     </ol>
   `;
@@ -69,10 +71,26 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   applyBtn.className = "btn btn-primary";
   applyBtn.textContent = "Apply Changes";
 
+  const mapToggleBtn = document.createElement("button");
+  mapToggleBtn.type = "button";
+  mapToggleBtn.className = "btn btn-sm design-map-toggle";
+  function syncMapToggleLabel() {
+    mapToggleBtn.textContent = showMap ? "Hide map" : "Show map";
+    mapToggleBtn.setAttribute("aria-pressed", showMap ? "true" : "false");
+  }
+  syncMapToggleLabel();
+  mapToggleBtn.addEventListener("click", () => {
+    showMap = !showMap;
+    localStorage.setItem(MAP_VISIBLE_KEY, showMap ? "true" : "false");
+    syncMapToggleLabel();
+    renderMain();
+  });
+
   toolbar.append(
     packageSelect,
     validateBtn,
     previewBtn,
+    mapToggleBtn,
     applyBtn,
     summaryEl,
     statusEl
@@ -155,12 +173,17 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   function renderStudio() {
     const split = document.createElement("div");
-    split.className = "design-studio";
+    split.className = "design-studio" + (showMap ? " design-studio--map-visible" : "");
 
     const left = document.createElement("div");
     left.className = "design-studio-left";
-    const right = document.createElement("div");
-    right.className = "design-studio-right design-studio-map";
+
+    const tabsPanel = document.createElement("div");
+    tabsPanel.className = "design-studio-tabs";
+
+    const mapPanel = document.createElement("div");
+    mapPanel.className = "design-studio-map";
+    mapPanel.hidden = !showMap;
 
     const mapHead = document.createElement("div");
     mapHead.className = "studio-map-head";
@@ -200,30 +223,53 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     resetBtn.textContent = "Reset layout";
     resetBtn.addEventListener("click", () => mapApi?.resetLayout());
 
-    mapControls.append(densitySelect, junctionLabel, resetBtn);
+    const hideMapBtn = document.createElement("button");
+    hideMapBtn.type = "button";
+    hideMapBtn.className = "btn btn-sm";
+    hideMapBtn.textContent = "Hide map";
+    hideMapBtn.addEventListener("click", () => {
+      showMap = false;
+      localStorage.setItem(MAP_VISIBLE_KEY, "false");
+      renderMain();
+    });
+
+    mapControls.append(densitySelect, junctionLabel, resetBtn, hideMapBtn);
     mapHead.append(mapTitle, mapControls);
 
     const mapMount = document.createElement("div");
     mapMount.className = "studio-map-mount";
-    right.append(mapHead, mapMount);
+    mapPanel.append(mapHead, mapMount);
 
-    split.append(left, right);
+    split.append(left, tabsPanel, mapPanel);
     main.appendChild(split);
 
     function selectEntity(id) {
+      if (selectedEntityId === id) {
+        mapApi?.setSelected(id);
+        return;
+      }
       selectedEntityId = id;
       refreshEditor();
       mapApi?.setSelected(id);
     }
 
-    function onStudioChange(updated) {
+    function onStudioChange(updated, { scope = "all" } = {}) {
       onSchemaChange(updated);
       workingSchema = updated;
       if (!selectedEntityId || !workingSchema.entity_types[selectedEntityId]) {
         selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
       }
       bindMap();
-      refreshEditor();
+      if (scope !== "views") refreshEditor();
+      if (scope !== "items") refreshTabs();
+    }
+
+    function onItemsChange(updated) {
+      onStudioChange(updated, { scope: "items" });
+    }
+
+    function onViewsChange(updated) {
+      onStudioChange(updated, { scope: "views" });
     }
 
     function refreshEditor() {
@@ -232,11 +278,22 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         schema: workingSchema,
         entityId: selectedEntityId,
         onSelectEntity: selectEntity,
-        onChange: onStudioChange,
+        onChange: onItemsChange,
+      });
+    }
+
+    function refreshTabs() {
+      renderStudioWorkspacePanel({
+        container: tabsPanel,
+        schema: workingSchema,
+        onChange: onViewsChange,
+        onSelectEntity: selectEntity,
+        variant: "sidebar",
       });
     }
 
     function bindMap() {
+      if (!showMap) return;
       mapApi = renderWorkspaceMap({
         container: mapMount,
         schema: workingSchema,
@@ -249,6 +306,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     }
 
     refreshEditor();
+    refreshTabs();
     bindMap();
   }
 

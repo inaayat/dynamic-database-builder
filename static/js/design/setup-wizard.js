@@ -8,11 +8,9 @@ import {
   PANEL_HELP,
   STORAGE_HELP,
   storageLabel,
-  VIEW_HELP,
-  viewLabel,
   helpParagraph,
 } from "./help-text.js";
-import { promptAddInfo, promptAddItem } from "./design-actions.js";
+import { createView, promptAddInfo, promptAddItem, removeField } from "./design-actions.js";
 import { buildCustomConnection } from "./recipes.js";
 import { openModal } from "./modals.js";
 
@@ -207,12 +205,7 @@ export function renderSetupWizard({
         del.className = "btn-sm";
         del.textContent = "Remove";
         del.addEventListener("click", () => {
-          delete entity.fields[fname];
-          (schema.views || []).forEach((v) => {
-            if (v.columns_from_fields) {
-              v.columns_from_fields = v.columns_from_fields.filter((c) => c !== fname);
-            }
-          });
+          removeField(schema, entityId, fname);
           emit();
         });
         li.appendChild(del);
@@ -380,7 +373,7 @@ export function renderSetupWizard({
   function renderViewsStep(panel) {
     panel.appendChild(sectionTitle("Views", PANEL_HELP.views));
     panel.appendChild(
-      helpParagraph("Views become tabs in Workspace. Use a Table for many rows, or a List for a compact roster.")
+      helpParagraph("Views become tabs in Workspace — pick an Item and configure columns in Design.")
     );
 
     const list = document.createElement("ul");
@@ -388,7 +381,7 @@ export function renderSetupWizard({
     (schema.views || []).forEach((view) => {
       const li = document.createElement("li");
       li.className = "wizard-list-item";
-      li.innerHTML = `<strong>${view.label}</strong> <span class="muted">${viewLabel(view.type)}</span>`;
+      li.innerHTML = `<strong>${view.label}</strong> <span class="muted">${schema.entity_types[view.entity]?.label || view.entity}</span>`;
       const del = document.createElement("button");
       del.type = "button";
       del.className = "btn-sm";
@@ -401,7 +394,7 @@ export function renderSetupWizard({
       list.appendChild(li);
     });
     if (!(schema.views || []).length) {
-      list.innerHTML = `<li class="muted">No views yet — add a Table or List.</li>`;
+      list.innerHTML = `<li class="muted">No views yet — add a tab below.</li>`;
     }
     panel.appendChild(list);
 
@@ -419,53 +412,26 @@ export function renderSetupWizard({
       alert("Add an Item type first.");
       return;
     }
-    let viewType = "catalog";
     const result = await openModal({
       title: "Add a view",
       confirmLabel: "Create view",
       body(root) {
         root.appendChild(selectRow("Show Item", "view-entity", ids, schema));
-        const cards = document.createElement("div");
-        cards.className = "choice-cards";
-        Object.entries(VIEW_HELP).forEach(([id, help]) => {
-          const card = document.createElement("button");
-          card.type = "button";
-          card.className = "choice-card" + (id === viewType ? " selected" : "");
-          card.innerHTML = `<strong>${help.label}</strong><p>${help.summary}</p><p class="muted">Best for: ${(help.bestFor || []).join(", ")}</p>`;
-          card.addEventListener("click", () => {
-            viewType = id;
-            cards.querySelectorAll(".choice-card").forEach((c) => c.classList.remove("selected"));
-            card.classList.add("selected");
-          });
-          cards.appendChild(card);
-        });
-        root.appendChild(cards);
       },
       onConfirm(root) {
-        return { entity: root.querySelector("#view-entity").value, type: viewType };
+        return { entity: root.querySelector("#view-entity").value };
       },
     });
     if (!result) return;
-    const entityDef = schema.entity_types[result.entity];
-    const view = {
-      id: `${result.entity}_${result.type}`,
-      type: result.type,
-      entity: result.entity,
-      label: entityDef.label_plural || entityDef.label,
-    };
-    if (result.type === "grid") {
-      view.primary = !(schema.views || []).some((v) => v.primary);
-      view.columns_from_fields = Object.entries(entityDef.fields || {})
-        .filter(([, f]) => f.editor?.column)
-        .map(([n]) => n);
-      const container = Object.entries(schema.entity_types).find(
-        ([, e]) => e.primitive === "container"
-      );
-      if (container) view.container_entity = container[0];
+    const created = createView(schema, {
+      entityId: result.entity,
+    });
+    if (created.error) {
+      alert(created.error);
+      return;
     }
-    schema.views = schema.views || [];
-    schema.views.push(view);
     emit();
+    render();
   }
 
   function renderApplyStep(panel) {

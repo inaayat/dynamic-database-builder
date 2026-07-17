@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-from kit.schema.model import SitePackage
+from kit.schema.model import SitePackage, ViewColumn
 
 DEFAULT_PACKAGE = "tagged_knowledge_base"
 DEFAULTS_DIR = Path(__file__).resolve().parent / "defaults"
@@ -204,6 +204,8 @@ class SchemaLoader:
             if rel.storage == "junction" and rel.junction is None:
                 errors.append(f"Relationship {rel.id!r}: junction storage requires junction config")
 
+        rel_map = {rel.id: rel for rel in package.relationships}
+
         for view in package.views:
             if view.entity not in entity_ids:
                 errors.append(f"View {view.id!r}: unknown entity {view.entity!r}")
@@ -211,6 +213,61 @@ class SchemaLoader:
                 errors.append(
                     f"View {view.id!r}: unknown container_entity {view.container_entity!r}"
                 )
+
+            join_ids = {j.relationship_id for j in (view.joins or [])}
+            for join in view.joins or []:
+                rel = rel_map.get(join.relationship_id)
+                if not rel:
+                    errors.append(
+                        f"View {view.id!r}: unknown join relationship {join.relationship_id!r}"
+                    )
+                elif view.entity not in (rel.from_, rel.to):
+                    errors.append(
+                        f"View {view.id!r}: join {join.relationship_id!r} "
+                        f"does not involve entity {view.entity!r}"
+                    )
+
+            columns = list(view.columns or [])
+            if not columns and view.columns_from_fields:
+                columns = [
+                    ViewColumn(
+                        id=f"primary:{field}",
+                        source="primary",
+                        field=field,
+                        mode="edit",
+                    )
+                    for field in view.columns_from_fields
+                ]
+
+            entity_fields = package.get_entity(view.entity).fields
+            for col in columns:
+                if col.source == "primary":
+                    if not col.field:
+                        errors.append(f"View {view.id!r}: primary column missing field")
+                    elif col.field not in entity_fields:
+                        errors.append(
+                            f"View {view.id!r}: unknown primary field {col.field!r}"
+                        )
+                elif col.source == "join":
+                    if not col.relationship_id:
+                        errors.append(
+                            f"View {view.id!r}: join column missing relationship_id"
+                        )
+                    elif col.relationship_id not in join_ids:
+                        errors.append(
+                            f"View {view.id!r}: column references join "
+                            f"{col.relationship_id!r} not in view.joins"
+                        )
+                    rel = rel_map.get(col.relationship_id or "")
+                    if rel and col.mode == "chip" and rel.storage != "junction":
+                        errors.append(
+                            f"View {view.id!r}: chip column requires junction "
+                            f"relationship {col.relationship_id!r}"
+                        )
+                else:
+                    errors.append(
+                        f"View {view.id!r}: column {col.id!r} has invalid source {col.source!r}"
+                    )
 
         if errors:
             raise SchemaValidationError("; ".join(errors))

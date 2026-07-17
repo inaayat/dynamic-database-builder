@@ -16,7 +16,7 @@ import {
   updateFieldLinkEntity,
 } from "./design-actions.js";
 import { matchEntityByName } from "./field-suggest.js";
-import { renderStudioWorkspacePanel } from "./studio-workspace-panel.js";
+import { helpParagraph, PANEL_HELP } from "./help-text.js";
 
 export function renderStudioItemEditor({
   container,
@@ -28,60 +28,132 @@ export function renderStudioItemEditor({
   container.innerHTML = "";
   container.className = "studio-editor";
 
-  container.appendChild(renderTypeBar(schema, entityId, onSelectEntity, onChange));
-
-  if (!entityId || !schema.entity_types[entityId]) {
+  const ids = Object.keys(schema.entity_types || {});
+  if (!ids.length) {
     container.appendChild(renderNewTypeInline(schema, onSelectEntity, onChange));
-    appendWorkspacePanel(container, schema, onChange, onSelectEntity);
     return;
   }
 
-  const entity = schema.entity_types[entityId];
-  container.appendChild(renderTitleRow(entity, () => onChange(schema)));
-  container.appendChild(renderFieldsSection(schema, entityId, entity, onChange));
-  container.appendChild(renderFooter(schema, entityId, entity, onSelectEntity, onChange));
-  appendWorkspacePanel(container, schema, onChange, onSelectEntity);
+  container.appendChild(renderItemsPanel(schema, entityId, onSelectEntity, onChange));
 }
 
-function appendWorkspacePanel(container, schema, onChange, onSelectEntity) {
-  const wsMount = document.createElement("div");
-  container.appendChild(wsMount);
-  renderStudioWorkspacePanel({
-    container: wsMount,
-    schema,
-    onChange,
-    onSelectEntity,
+function renderItemsPanel(schema, entityId, onSelectEntity, onChange) {
+  const section = document.createElement("section");
+  section.className = "ie-section ie-types-section";
+
+  const head = document.createElement("div");
+  head.className = "ie-section-head";
+  head.innerHTML = "<span>Items</span>";
+  section.appendChild(head);
+  const hint = helpParagraph(PANEL_HELP.entities);
+  hint.classList.add("design-studio-panel-hint");
+  section.appendChild(hint);
+
+  const list = document.createElement("div");
+  list.className = "ie-type-list";
+
+  Object.keys(schema.entity_types || {}).forEach((id) => {
+    list.appendChild(renderItemTypeDetails(id, schema, entityId, onSelectEntity, onChange));
   });
+
+  list.appendChild(renderAddTypeRow(schema, onSelectEntity, onChange));
+  section.appendChild(list);
+  return section;
 }
 
-function renderTypeBar(schema, entityId, onSelectEntity, onChange) {
-  const bar = document.createElement("div");
-  bar.className = "ie-type-bar";
+function renderItemTypeDetails(id, schema, selectedId, onSelectEntity, onChange) {
+  const entity = schema.entity_types[id];
+  const nFields = Object.values(entity.fields || {}).filter(
+    (f) => !(f.design_only && f.type !== "item_link")
+  ).length;
+  const selected = id === selectedId;
 
-  const ids = Object.keys(schema.entity_types || {});
-  if (ids.length) {
-    const sel = document.createElement("select");
-    sel.className = "ie-type-select";
-    ids.forEach((id) => {
-      const opt = document.createElement("option");
-      opt.value = id;
-      opt.textContent = schema.entity_types[id].label;
-      opt.selected = id === entityId;
-      sel.appendChild(opt);
+  const details = document.createElement("details");
+  details.className = "ie-field-item ie-type-item" + (selected ? " selected" : "");
+  if (selected) details.open = true;
+
+  const summary = document.createElement("summary");
+  summary.className = "ie-field-summary";
+  summary.innerHTML = `<span class="ie-field-summary-name">${escapeHtml(entity.label || id)}</span><span class="ie-field-summary-meta muted">${nFields} field${nFields === 1 ? "" : "s"}</span>`;
+
+  const body = document.createElement("div");
+  body.className = "ie-field-body ie-type-body";
+
+  body.appendChild(renderTitleRow(entity, () => onChange(schema)));
+  body.appendChild(renderFieldsBlock(schema, id, entity, onChange));
+  body.appendChild(renderTypeFooter(schema, id, onSelectEntity, onChange));
+
+  details.append(summary, body);
+
+  details.addEventListener("toggle", () => {
+    if (details.open) onSelectEntity(id);
+  });
+
+  return details;
+}
+
+function renderFieldsBlock(schema, entityId, entity, onChange) {
+  const block = document.createElement("div");
+  block.className = "ie-fields-block";
+
+  const head = document.createElement("div");
+  head.className = "ie-section-head";
+  head.innerHTML = "<span>Fields</span>";
+  block.appendChild(head);
+
+  const list = document.createElement("div");
+  list.className = "ie-field-list";
+
+  const entries = Object.entries(entity.fields || {}).filter(([, fdef]) => {
+    if (fdef.design_only && fdef.type !== "item_link") return false;
+    return true;
+  });
+
+  if (!entries.length) {
+    list.appendChild(emptyFieldsHint());
+  } else {
+    entries.forEach(([fname, fdef]) => {
+      list.appendChild(renderFieldItem(fname, fdef, entity, schema, entityId, onChange, { inline: true }));
     });
-    sel.addEventListener("change", () => onSelectEntity(sel.value));
-    bar.appendChild(sel);
   }
 
-  const newDrop = document.createElement("details");
-  newDrop.className = "inline-drop";
-  newDrop.innerHTML = `<summary class="inline-drop-trigger">+ Type</summary>`;
-  const panel = document.createElement("div");
-  panel.className = "inline-drop-panel inline-drop-panel-tight";
+  list.appendChild(renderAddFieldRow(schema, entityId, onChange));
+  block.appendChild(list);
+  return block;
+}
+
+function renderTypeFooter(schema, entityId, onSelectEntity, onChange) {
+  const foot = document.createElement("div");
+  foot.className = "ie-footer";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "btn btn-sm ie-delete";
+  remove.textContent = "Delete type";
+  remove.addEventListener("click", () => {
+    removeEntity(schema, entityId);
+    const next = Object.keys(schema.entity_types || {})[0] || null;
+    onChange(schema);
+    onSelectEntity(next);
+  });
+  foot.appendChild(remove);
+  return foot;
+}
+
+function renderAddTypeRow(schema, onSelectEntity, onChange) {
+  const details = document.createElement("details");
+  details.className = "ie-field-item ie-add-field-item";
+  details.innerHTML = `<summary class="ie-field-summary ie-add-field-summary">+ Type</summary>`;
+
+  const body = document.createElement("div");
+  body.className = "ie-field-body";
+  const row = document.createElement("div");
+  row.className = "ie-inline-row";
+
   const input = document.createElement("input");
   input.type = "text";
   input.className = "ie-input";
   input.placeholder = "e.g. Student, Note";
+
   const go = document.createElement("button");
   go.type = "button";
   go.className = "btn btn-primary btn-sm";
@@ -94,17 +166,21 @@ function renderTypeBar(schema, entityId, onSelectEntity, onChange) {
       return;
     }
     input.value = "";
-    newDrop.open = false;
+    details.open = false;
     onChange(schema);
     onSelectEntity(created.id);
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") go.click();
   });
-  panel.append(input, go);
-  newDrop.appendChild(panel);
-  bar.appendChild(newDrop);
-  return bar;
+
+  row.append(input, go);
+  body.appendChild(row);
+  details.appendChild(body);
+  details.addEventListener("toggle", () => {
+    if (details.open) setTimeout(() => input.focus(), 0);
+  });
+  return details;
 }
 
 function renderNewTypeInline(schema, onSelectEntity, onChange) {
@@ -162,40 +238,6 @@ function renderTitleRow(entity, commit) {
   return row;
 }
 
-function renderFieldsSection(schema, entityId, entity, onChange) {
-  const section = document.createElement("section");
-  section.className = "ie-section";
-
-  const head = document.createElement("div");
-  head.className = "ie-section-head";
-  head.innerHTML = "<span>Fields</span>";
-  section.appendChild(head);
-  const hint = document.createElement("p");
-  hint.className = "ie-section-hint muted";
-  hint.textContent = "Pick an Item type on a field to link types. Connections show on the map.";
-  section.appendChild(hint);
-
-  const list = document.createElement("div");
-  list.className = "ie-field-list";
-
-  const entries = Object.entries(entity.fields || {}).filter(([fname, fdef]) => {
-    if (fdef.design_only && fdef.type !== "item_link") return false;
-    return true;
-  });
-
-  if (!entries.length) {
-    list.appendChild(emptyFieldsHint());
-  } else {
-    entries.forEach(([fname, fdef]) => {
-      list.appendChild(renderFieldItem(fname, fdef, entity, schema, entityId, onChange));
-    });
-  }
-
-  list.appendChild(renderAddFieldRow(schema, entityId, onChange));
-  section.appendChild(list);
-  return section;
-}
-
 function emptyFieldsHint() {
   const p = document.createElement("p");
   p.className = "muted ie-fields-empty";
@@ -243,19 +285,12 @@ function populateItemTypeSelect(itemSel, schema, entityId, { value = "", include
   }
 }
 
-function renderFieldItem(fname, fdef, entity, schema, entityId, onChange) {
-  const details = document.createElement("details");
-  details.className = "ie-field-item";
+
+function renderFieldItem(fname, fdef, entity, schema, entityId, onChange, { inline = false } = {}) {
   const system = isPrimaryKey(entity, fname);
   const link = isLinkField(fdef);
   const header = fdef.editor?.header || fname;
 
-  const summary = document.createElement("summary");
-  summary.className = "ie-field-summary";
-  summary.innerHTML = `<span class="ie-field-summary-name">${escapeHtml(header)}</span><span class="ie-field-summary-meta muted">${escapeHtml(fieldSummaryMeta(fdef, schema, entityId))}</span>`;
-
-  const body = document.createElement("div");
-  body.className = "ie-field-body";
   const row = document.createElement("div");
   row.className = "ie-field-row";
 
@@ -362,6 +397,20 @@ function renderFieldItem(fname, fdef, entity, schema, entityId, onChange) {
     row.appendChild(del);
   }
 
+  if (inline) {
+    const wrap = document.createElement("div");
+    wrap.className = "ie-field-item ie-field-inline";
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  const details = document.createElement("details");
+  details.className = "ie-field-item";
+  const summary = document.createElement("summary");
+  summary.className = "ie-field-summary";
+  summary.innerHTML = `<span class="ie-field-summary-name">${escapeHtml(header)}</span><span class="ie-field-summary-meta muted">${escapeHtml(fieldSummaryMeta(fdef, schema, entityId))}</span>`;
+  const body = document.createElement("div");
+  body.className = "ie-field-body";
   body.appendChild(row);
   details.append(summary, body);
   return details;
@@ -506,21 +555,4 @@ function renderAddFieldRow(schema, entityId, onChange) {
   });
 
   return details;
-}
-
-function renderFooter(schema, entityId, entity, onSelectEntity, onChange) {
-  const foot = document.createElement("div");
-  foot.className = "ie-footer";
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "btn btn-sm ie-delete";
-  remove.textContent = "Delete type";
-  remove.addEventListener("click", () => {
-    removeEntity(schema, entityId);
-    const next = Object.keys(schema.entity_types || {})[0] || null;
-    onChange(schema);
-    onSelectEntity(next);
-  });
-  foot.appendChild(remove);
-  return foot;
 }
