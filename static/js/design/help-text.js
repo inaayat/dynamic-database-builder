@@ -9,9 +9,7 @@ export const PAGE_INTRO = {
 
 export const PANEL_HELP = {
   entities:
-    "Items are the kinds of records you track — Notes, Students, Classes, Tags, and so on.",
-  fields:
-    "Information on an Item is either a simple value (text, date…) or a link to other Items.",
+    "Entities are the nouns in your schema — each becomes a SQLite table. Entities are the things you want to organize Every workspace starts with one or more entities, and it is a type of item that you want to keep track of.",
   connections:
     "Connections describe how Items relate: one-to-many, many-to-many, or an optional link.",
   views:
