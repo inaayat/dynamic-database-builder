@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Editor</title>
+  <title>Design</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -16,18 +16,18 @@
   </header>
 
   <nav class="tabs" role="tablist">
-    <button class="tab active" role="tab" data-mode="edit" aria-selected="true">Edit</button>
-    <button class="tab" role="tab" data-mode="design" aria-selected="false">Design</button>
+    <button class="tab active" role="tab" data-mode="design" aria-selected="true">Design</button>
+    <button class="tab" role="tab" data-mode="edit" aria-selected="false">Workspace</button>
   </nav>
 
   <main>
-    <section id="panel-edit" class="panel active" data-mode="edit" role="tabpanel">
-      <nav id="view-tabs" class="view-tabs" role="tablist"></nav>
-      <div id="view-mount" class="view-mount"></div>
+    <section id="panel-design" class="panel active" data-mode="design" role="tabpanel">
+      <div id="design-mount" class="design-mount"></div>
     </section>
 
-    <section id="panel-design" class="panel" data-mode="design" role="tabpanel">
-      <div id="design-mount" class="design-mount"></div>
+    <section id="panel-edit" class="panel" data-mode="edit" role="tabpanel">
+      <nav id="view-tabs" class="view-tabs" role="tablist"></nav>
+      <div id="view-mount" class="view-mount"></div>
     </section>
 
     <p class="status" id="load-status">Loading schema…</p>

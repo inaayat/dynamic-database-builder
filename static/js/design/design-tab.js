@@ -4,22 +4,59 @@ import {
   loadPackage,
   validateSchema,
 } from "../schema-client.js";
-import { renderConnectionPanel } from "./connection-panel.js";
-import { renderEntityPanel } from "./entity-panel.js";
-import { renderInspector } from "./inspector.js";
+import { PAGE_INTRO, helpParagraph } from "./help-text.js";
+import { renderStudioItemEditor } from "./item-editor.js";
+import { renderSetupWizard } from "./setup-wizard.js";
+import { renderWorkspaceMap } from "./workspace-map.js";
+
+const MODE_KEY = "designMode";
+const SETUP_VIEW_KEY = "designSetupView";
+const MAP_DENSITY_KEY = "designMapDensity";
 
 export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let workingSchema = structuredClone(getSchema());
-  let selection = { type: "none" };
-  let entityPanel;
-  let connectionPanel;
+  let mode = localStorage.getItem(MODE_KEY) || "setup";
+  if (mode === "map" || mode === "advanced") mode = "setup";
+  let setupView = localStorage.getItem(SETUP_VIEW_KEY) || "studio";
+  if (setupView === "map") setupView = "studio";
+  let mapDensity = localStorage.getItem(MAP_DENSITY_KEY) || "simple";
+  let selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
+  let startedBlank = false;
+  let mapApi = null;
+
+  const intro = document.createElement("div");
+  intro.className = "design-intro";
+  intro.innerHTML = `<h2>${PAGE_INTRO.title}</h2>`;
+  intro.appendChild(helpParagraph(PAGE_INTRO.lead));
+  intro.appendChild(helpParagraph(PAGE_INTRO.note));
+  const howDetails = document.createElement("details");
+  howDetails.className = "design-how";
+  howDetails.innerHTML = `
+    <summary>How Design works</summary>
+    <ol class="design-how-list">
+      <li><strong>Items</strong> — kinds of records you track</li>
+      <li><strong>Info</strong> — values on an Item, or links to other Items (you create types explicitly)</li>
+      <li><strong>Connections</strong> — how Items relate</li>
+      <li><strong>Views</strong> — tabs in Workspace</li>
+      <li><strong>Apply Changes</strong> — make it live</li>
+    </ol>
+  `;
+  intro.appendChild(howDetails);
 
   const toolbar = document.createElement("div");
   toolbar.className = "design-toolbar";
 
   const packageSelect = document.createElement("select");
   packageSelect.className = "design-package-select";
-  packageSelect.innerHTML = "<option value=''>Package…</option>";
+  packageSelect.innerHTML = "<option value=''>Start from a template…</option>";
+
+  const viewSelect = document.createElement("select");
+  viewSelect.className = "design-package-select";
+  viewSelect.innerHTML = `
+    <option value="studio">Studio (map + editor)</option>
+    <option value="steps">Step by step</option>
+  `;
+  viewSelect.value = setupView === "steps" ? "steps" : "studio";
 
   const statusEl = document.createElement("span");
   statusEl.className = "design-status muted";
@@ -27,77 +64,241 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   const validateBtn = document.createElement("button");
   validateBtn.type = "button";
   validateBtn.className = "btn";
-  validateBtn.textContent = "Validate schema";
+  validateBtn.textContent = "Check for problems";
 
   const previewBtn = document.createElement("button");
   previewBtn.type = "button";
   previewBtn.className = "btn";
-  previewBtn.textContent = "Preview in Edit";
+  previewBtn.textContent = "Preview in Workspace";
 
   const applyBtn = document.createElement("button");
   applyBtn.type = "button";
   applyBtn.className = "btn btn-primary";
-  applyBtn.textContent = "Apply & migrate DB";
+  applyBtn.textContent = "Apply Changes";
 
-  toolbar.append(packageSelect, validateBtn, previewBtn, applyBtn, statusEl);
-
-  const layout = document.createElement("div");
-  layout.className = "design-layout";
-
-  const colEntities = document.createElement("div");
-  colEntities.className = "design-col";
-  const colConnections = document.createElement("div");
-  colConnections.className = "design-col";
-  const colInspector = document.createElement("div");
-  colInspector.className = "design-col design-col-inspector";
-
-  layout.append(colEntities, colConnections, colInspector);
+  toolbar.append(
+    packageSelect,
+    viewSelect,
+    validateBtn,
+    previewBtn,
+    applyBtn,
+    statusEl
+  );
 
   const messages = document.createElement("div");
   messages.className = "design-messages";
   messages.hidden = true;
 
+  const main = document.createElement("div");
+  main.className = "design-main";
+
   mount.innerHTML = "";
-  mount.append(toolbar, messages, layout);
+  mount.append(intro, toolbar, messages, main);
 
   function onSchemaChange(updated) {
     workingSchema = updated;
     statusEl.textContent = "Unsaved changes";
   }
 
-  function onSelect(sel) {
-    selection = sel;
-    renderInspector({
-      container: colInspector,
-      selection,
-      schema: workingSchema,
-      onChange: onSchemaChange,
-    });
+  function syncToolbar() {
+    viewSelect.value = setupView === "steps" ? "steps" : "studio";
   }
 
-  function refreshPanels() {
-    entityPanel = renderEntityPanel({
-      container: colEntities,
-      schema: workingSchema,
-      onChange: onSchemaChange,
-      onSelect,
+  viewSelect.addEventListener("change", () => {
+    setupView = viewSelect.value;
+    localStorage.setItem(SETUP_VIEW_KEY, setupView);
+    syncToolbar();
+    renderMain();
+  });
+
+  async function doApply() {
+    try {
+      statusEl.textContent = "Checking…";
+      const toApply = schemaForApi(workingSchema);
+      const validation = await validateSchema(toApply);
+      if (!validation.valid) {
+        showMessages(validation.errors.map((e) => `Error: ${e}`), "error");
+        statusEl.textContent = "Fix problems first";
+        return;
+      }
+      const preview = validation.diff;
+      if (preview) {
+        const summary = formatDiffPreview(preview);
+        if (!confirm(`Apply these changes to your workspace?\n\n${summary}`)) {
+          statusEl.textContent = "";
+          return;
+        }
+      }
+      statusEl.textContent = "Applying…";
+      const result = await applySchema(toApply);
+      workingSchema = result.schema;
+      setSchema(workingSchema);
+      showMessages([formatAppliedDiff(result.diff)], "ok");
+      statusEl.textContent = "Changes applied";
+      renderMain();
+    } catch (err) {
+      showMessages([formatErrorLine(err)], "error");
+      statusEl.textContent = "Could not apply changes";
+    }
+  }
+
+  function doPreview() {
+    setSchema(workingSchema);
+    onPreview();
+  }
+
+  function renderMain() {
+    syncToolbar();
+    main.innerHTML = "";
+    const entityCount = Object.keys(workingSchema.entity_types || {}).length;
+    if (!entityCount && !startedBlank) {
+      main.appendChild(renderEmptyState());
+      return;
+    }
+
+    if (setupView === "steps") {
+      renderSetupWizard({
+        container: main,
+        schema: workingSchema,
+        onChange: onSchemaChange,
+        onApply: doApply,
+        onPreview: doPreview,
+        statusEl,
+      });
+      return;
+    }
+
+    renderStudio();
+  }
+
+  function renderStudio() {
+    const split = document.createElement("div");
+    split.className = "design-studio";
+
+    const left = document.createElement("div");
+    left.className = "design-studio-left";
+    const right = document.createElement("div");
+    right.className = "design-studio-right design-studio-map";
+
+    const mapHead = document.createElement("div");
+    mapHead.className = "studio-map-head";
+    const mapTitle = document.createElement("strong");
+    mapTitle.textContent = "Map";
+    const densitySelect = document.createElement("select");
+    densitySelect.className = "erd-density-select";
+    densitySelect.innerHTML = `
+      <option value="simple">Simple — keys & links</option>
+      <option value="full">Full — all fields</option>
+    `;
+    densitySelect.value = mapDensity;
+    densitySelect.addEventListener("change", () => {
+      mapDensity = densitySelect.value;
+      localStorage.setItem(MAP_DENSITY_KEY, mapDensity);
+      bindMap();
     });
-    connectionPanel = renderConnectionPanel({
-      container: colConnections,
-      schema: workingSchema,
-      onChange: onSchemaChange,
-      onSelect,
+    mapHead.append(mapTitle, densitySelect);
+
+    const mapMount = document.createElement("div");
+    mapMount.className = "studio-map-mount";
+    right.append(mapHead, mapMount);
+
+    split.append(left, right);
+    main.appendChild(split);
+
+    function refreshEditor() {
+      renderStudioItemEditor({
+        container: left,
+        schema: workingSchema,
+        entityId: selectedEntityId,
+        onSelectEntity: (id) => {
+          selectedEntityId = id;
+          refreshEditor();
+          mapApi?.setSelected(id);
+        },
+        onChange: (updated) => {
+          onSchemaChange(updated);
+          workingSchema = updated;
+          bindMap();
+          refreshEditor();
+        },
+      });
+    }
+
+    function bindMap() {
+      mapApi = renderWorkspaceMap({
+        container: mapMount,
+        schema: workingSchema,
+        density: mapDensity,
+        selectedEntityId,
+        onSelectEntity: (id) => {
+          selectedEntityId = id;
+          refreshEditor();
+        },
+        onChange: (updated) => {
+          onSchemaChange(updated);
+          workingSchema = updated;
+          if (!selectedEntityId || !workingSchema.entity_types[selectedEntityId]) {
+            selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
+          }
+          bindMap();
+          refreshEditor();
+        },
+      });
+    }
+
+    refreshEditor();
+    bindMap();
+  }
+
+  function renderEmptyState() {
+    const empty = document.createElement("div");
+    empty.className = "design-empty";
+    empty.innerHTML = `<h3>Set up your workspace</h3><p class="design-help">Start from a Notes template, or create Item types and connect them in the studio.</p>`;
+    const actions = document.createElement("div");
+    actions.className = "design-empty-actions";
+    const templateBtn = document.createElement("button");
+    templateBtn.type = "button";
+    templateBtn.className = "btn btn-primary";
+    templateBtn.textContent = "Start from Notes template";
+    templateBtn.addEventListener("click", async () => {
+      try {
+        const result = await loadPackage("tagged_knowledge_base");
+        workingSchema = result.schema;
+        setSchema(workingSchema);
+        selectedEntityId = Object.keys(workingSchema.entity_types)[0] || null;
+        startedBlank = false;
+        setupView = "studio";
+        localStorage.setItem(SETUP_VIEW_KEY, setupView);
+        statusEl.textContent = "Notes template loaded";
+        renderMain();
+      } catch (err) {
+        showMessages([formatErrorLine(err)], "error");
+      }
     });
-    onSelect(selection);
+    const blankBtn = document.createElement("button");
+    blankBtn.type = "button";
+    blankBtn.className = "btn";
+    blankBtn.textContent = "Start blank";
+    blankBtn.addEventListener("click", () => {
+      workingSchema = blankWorkspace(workingSchema);
+      startedBlank = true;
+      selectedEntityId = null;
+      setupView = "studio";
+      onSchemaChange(workingSchema);
+      renderMain();
+    });
+    actions.append(templateBtn, blankBtn);
+    empty.appendChild(actions);
+    return empty;
   }
 
   async function loadPackages() {
     try {
       const { packages } = await getPackages();
       packageSelect.innerHTML =
-        "<option value=''>Package…</option>" +
+        "<option value=''>Start from a template…</option>" +
         packages
-          .map((p) => `<option value="${p}">${p}</option>`)
+          .map((p) => `<option value="${p}">${p.replace(/_/g, " ")}</option>`)
           .join("");
     } catch {
       /* ignore */
@@ -107,89 +308,47 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   packageSelect.addEventListener("change", async () => {
     const id = packageSelect.value;
     if (!id) return;
-    if (!confirm(`Load package "${id}"? This replaces the active schema.`)) {
+    if (!confirm(`Load template “${id.replace(/_/g, " ")}”? This replaces your Design setup.`)) {
       packageSelect.value = "";
       return;
     }
     try {
-      statusEl.textContent = "Loading package…";
       const result = await loadPackage(id);
       workingSchema = result.schema;
       setSchema(workingSchema);
-      statusEl.textContent = `Loaded ${id}`;
+      selectedEntityId = Object.keys(workingSchema.entity_types)[0] || null;
       packageSelect.value = "";
-      refreshPanels();
+      statusEl.textContent = "Template loaded";
+      renderMain();
     } catch (err) {
-      statusEl.textContent = "";
-      showMessages([err.message], "error");
+      showMessages([formatErrorLine(err)], "error");
       packageSelect.value = "";
     }
   });
 
   validateBtn.addEventListener("click", async () => {
     try {
-      statusEl.textContent = "Validating…";
-      const result = await validateSchema(workingSchema);
+      const result = await validateSchema(schemaForApi(workingSchema));
       const lines = [];
       if (result.errors?.length) lines.push(...result.errors.map((e) => `Error: ${e}`));
       if (result.warnings?.length) lines.push(...result.warnings.map((w) => `Warning: ${w}`));
-      if (!lines.length) lines.push("Schema is valid.");
+      if (!lines.length) lines.push("Everything looks good.");
       showMessages(lines, result.valid ? "ok" : "error");
-      statusEl.textContent = result.valid ? "Valid" : "Validation failed";
+      statusEl.textContent = result.valid ? "Looks good" : "Needs attention";
     } catch (err) {
-      showMessages([err.message], "error");
-      statusEl.textContent = "";
+      showMessages([formatErrorLine(err)], "error");
     }
   });
 
-  previewBtn.addEventListener("click", () => {
-    setSchema(workingSchema);
-    onPreview();
-  });
-
-  applyBtn.addEventListener("click", async () => {
-    try {
-      statusEl.textContent = "Checking migration…";
-      const validation = await validateSchema(workingSchema);
-      if (!validation.valid) {
-        showMessages(validation.errors.map((e) => `Error: ${e}`), "error");
-        statusEl.textContent = "Fix errors first";
-        return;
-      }
-
-      const preview = validation.diff;
-      if (preview) {
-        const summary = formatDiffPreview(preview);
-        if (!confirm(`Apply migration?\n\n${summary}`)) return;
-      }
-
-      statusEl.textContent = "Applying…";
-      const result = await applySchema(workingSchema);
-      workingSchema = result.schema;
-      setSchema(workingSchema);
-      showMessages([formatAppliedDiff(result.diff)], "ok");
-      statusEl.textContent = "Applied";
-      refreshPanels();
-    } catch (err) {
-      if (err.status === 409 && err.data?.diff) {
-        showMessages(
-          [
-            err.data.message || "Destructive changes blocked",
-            formatDiffPreview(err.data.diff),
-          ],
-          "error"
-        );
-      } else {
-        showMessages([err.message], "error");
-      }
-      statusEl.textContent = "Apply failed";
-    }
-  });
+  previewBtn.addEventListener("click", doPreview);
+  applyBtn.addEventListener("click", doApply);
 
   function showMessages(lines, kind) {
     messages.hidden = false;
     messages.className = "design-messages " + kind;
-    messages.innerHTML = lines.map((l) => `<div>${escapeHtml(l)}</div>`).join("");
+    messages.innerHTML = lines
+      .map((l) => `<div>${escapeHtml(formatErrorLine(l))}</div>`)
+      .join("");
   }
 
   function formatDiffPreview(diff) {
@@ -197,39 +356,96 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     if (diff.new_tables?.length) parts.push(`New tables: ${diff.new_tables.join(", ")}`);
     if (diff.new_columns?.length) {
       parts.push(
-        "New columns:\n" +
-          diff.new_columns.map((c) => `  ${c.table}.${c.column}`).join("\n")
+        "New fields:\n" + diff.new_columns.map((c) => `  ${c.table}.${c.column}`).join("\n")
       );
     }
-    if (diff.removed_tables?.length) {
-      parts.push(`Removed tables: ${diff.removed_tables.join(", ")}`);
-    }
-    if (diff.removed_columns?.length) {
-      parts.push(`Removed columns: ${diff.removed_columns.length}`);
-    }
     if (diff.warnings?.length) parts.push(...diff.warnings);
-    return parts.join("\n") || "No schema changes detected.";
+    return parts.join("\n") || "Settings only — no database changes.";
   }
 
   function formatAppliedDiff(diff) {
-    if (!diff) return "Schema applied.";
+    if (!diff) return "Your changes are live in Workspace.";
     const cols = diff.new_columns?.length || 0;
     const tables = diff.new_tables?.length || 0;
-    return `Applied: ${tables} table(s), ${cols} column(s) added.`;
+    if (!cols && !tables) return "Your changes are live in Workspace.";
+    return `Applied: ${tables} table(s), ${cols} field(s). Live in Workspace.`;
   }
 
   loadPackages();
-  refreshPanels();
+  renderMain();
 
   return {
     reload(schema) {
       workingSchema = structuredClone(schema);
-      selection = { type: "none" };
+      selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
       statusEl.textContent = "";
       messages.hidden = true;
-      refreshPanels();
+      renderMain();
     },
   };
+}
+
+function blankWorkspace(current) {
+  return {
+    schema_version: current.schema_version || "1.1",
+    title: "My Workspace",
+    site: {
+      ...(current.site || {}),
+      id: current.site?.id || "my-workspace",
+      title: "My Workspace",
+    },
+    storage: current.storage || { local_db: "planning.db" },
+    format_conventions: current.format_conventions || { bullet_separator: "\u001e" },
+    entity_types: {},
+    relationships: [],
+    views: [],
+    actions: current.actions || [],
+    export_profiles: current.export_profiles || {},
+    seed: {},
+  };
+}
+
+/** Drop Design-only markers (e.g. item_link chips) before validate/apply. */
+function schemaForApi(schema) {
+  const copy = structuredClone(schema);
+  Object.values(copy.entity_types || {}).forEach((ent) => {
+    Object.entries(ent.fields || {}).forEach(([k, f]) => {
+      if (f.design_only || f.type === "item_link") delete ent.fields[k];
+    });
+  });
+  return copy;
+}
+
+function formatErrorLine(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (value instanceof Error) {
+    if (value.data) {
+      const detail = value.data.detail || value.data.message || value.data;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item) => {
+            if (typeof item === "string") return item;
+            if (item && typeof item === "object") {
+              const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+              const msg = item.msg || item.message || JSON.stringify(item);
+              return loc ? `${loc}: ${msg}` : msg;
+            }
+            return String(item);
+          })
+          .join("; ");
+      }
+      if (typeof detail === "object") {
+        return detail.message || detail.msg || value.message || JSON.stringify(detail);
+      }
+    }
+    return value.message || String(value);
+  }
+  if (typeof value === "object") {
+    return value.message || value.msg || JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function escapeHtml(s) {

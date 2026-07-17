@@ -487,6 +487,25 @@ Extract into reusable modules:
 
 ---
 
+### Phase 2.5 — Guided workspace setup (UX clarity)
+
+**Goal:** First-time Design feels like setting up a **workspace**, not editing a schema. Sequential flow; friendly names only in UI.
+
+**Deliverables**
+
+- [x] Empty / first-run state: Start from Notes **template** or blank workspace
+- [x] Guided order: Entities → Fields (“types of values”) → Connections → Views → Apply Changes
+- [x] Add Entity / Add Field modals (cards + catalogs; no raw `prompt()` for primary path)
+- [x] Suggested connections from current entities (recipes); Custom still available
+- [x] Collapse long help into one “How Design works” strip; panel copy stays one sentence
+- [x] UI copy uses **Workspace** / **Template** / **Apply Changes** (see §10 glossary)
+- [x] Do **not** build multi-workspace switcher yet — one active workspace only
+- [x] Advanced editor toggle keeps 3-column Design for power users
+
+**Exit:** New user can create Notes + Tags, add a field, connect them, Apply, and edit in Edit without reading TECHNICAL_SPEC.
+
+---
+
 ### Phase 3 — Mind map (3–4 weeks)
 
 **Goal:** Next use case — graph canvas with nodes, edges, layout persistence.
@@ -542,6 +561,7 @@ Extract into reusable modules:
 - [ ] Schema import from bundled compliance seed JSON
 - [ ] Design tab: visual drag canvas (upgrade from list-based edges)
 - [ ] Tests: schema validation, projection round-trip, junction diff, export snapshots
+- [ ] Multi-workspace (optional): list / switch / duplicate workspaces; one SQLite file per workspace; UI says Workspace not schema/build
 
 ---
 
@@ -625,14 +645,59 @@ Prove generalization by encoding the audit use case as data:
 | Schema format | JSON file | Git-friendly, builder reads/writes same artifact |
 | First package | tagged_knowledge_base | Notes before mind map |
 | Second package | mind_map_canvas | Phase 3 |
+| Schema hot-reload | Hot-reload views; DB migrate on **Apply Changes** only | Design can iterate without wiping data mid-edit |
+| Active workspace (v1) | **One** active workspace per app instance | `data/active-schema.json` + one SQLite DB (`planning.db`) |
+| Multi-workspace | Deferred (Phase 5+) | Plan naming now; don't build switcher yet |
+| User-facing name | **Workspace** | Avoid “build” (sounds like compile) and leading with “schema” in UI |
+| Internal / file name | `schema` / `site` / template packages | Keep code + JSON paths as-is |
 
-### Open (decide in Phase 1)
+### Naming glossary (UI vs code)
+
+| Layer | Call it in UI | Call it in code / files | Role |
+|-------|---------------|-------------------------|------|
+| Living app the user is making | **Workspace** | `site` / active schema + DB | Schema + data + views together |
+| Machine-readable config | Schema (Advanced / docs only) | `schema`, `site.schema.json`, `active-schema.json` | Entities, fields, connections, views |
+| Starter configs | **Templates** | `kit/schema/defaults/*.json`, `package/{id}` | Seed a new workspace (not the workspace itself) |
+| Saved user variant (later) | Saved design / snapshot | export zip or custom package | Backup or reusable starting point |
+
+**Do not call workspaces “builds.”** Prefer: “Set up your workspace,” “Apply Changes,” “Start from a template.”
+
+### Multi-workspace (later — Phase 5+)
+
+When needed:
+
+```
+My Workspaces
+├── Research Notes     ← active
+├── Mind Map Sprint
+└── Audit Checklist
+```
+
+Each workspace = own schema JSON + own SQLite file (simplest isolation). Switching loads that workspace’s schema + DB into Edit/Design.
+
+**v1 escape hatch (no switcher):** Export JSON / XLSX; later “Duplicate workspace” or “New workspace from template.”
+
+Leave room in the model now: every workspace has `id`, `title`, schema path, db path — already partially present as `site.id` / `site.title` / `storage.local_db`.
+
+### First-time Design flow (Phase 2.5)
+
+Guided setup order (matches how users think):
+
+1. **Entities** — what am I tracking? (Collection / Item / Reference)
+2. **Fields** — what kinds of values does each store?
+3. **Connections** — how do they relate? (One to Many / Many to Many / Optional Link)
+4. **Views** — how do I look at them? (Table / List; more later)
+5. **Apply Changes** — make it live in Edit
+
+After first setup, keep the 3-column Design builder for tweaks. Templates pre-fill a sensible Notes workspace so most users tweak instead of inventing from zero.
+
+### Open (decide later)
 
 | Question | Options |
 |----------|---------|
-| Schema hot-reload vs restart | Hot-reload views; DB migrate on Apply only |
-| Multi-site in one DB | Single site per `planning.db` for v1 |
 | Public read-only generator | Phase 4+ |
+| Multi-workspace UI (list / switch / duplicate) | Phase 5+ |
+| Shared DB with `workspace_id` vs one file per workspace | Prefer one SQLite file per workspace unless proven otherwise |
 
 ---
 
@@ -655,9 +720,10 @@ Prove generalization by encoding the audit use case as data:
 | 0 Foundation | 1–2 wk | 2 wk |
 | 1 Notes KB runtime | 2–3 wk | 5 wk |
 | 2 Design tab | 2–3 wk | 8 wk |
-| 3 Mind map | 3–4 wk | 12 wk |
-| 4 Parity extras | 2 wk | 14 wk |
-| 5 Codegen/polish | 1–2 wk | 16 wk |
+| 2.5 Guided workspace setup | 1–2 wk | 10 wk |
+| 3 Mind map | 3–4 wk | 14 wk |
+| 4 Parity extras | 2 wk | 16 wk |
+| 5 Codegen / multi-workspace polish | 1–2 wk | 18 wk |
 
 *Solo developer estimate; parallel work on graph plugin + export can compress Phase 3.*
 
