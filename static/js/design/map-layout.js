@@ -39,7 +39,7 @@ export function autoLayoutPositions({
   const layers = rankLayers(entityIds, relationships, adj);
 
   const layerBuckets = new Map();
-  layers.forEach((layer, id) => {
+  Object.entries(layers).forEach(([id, layer]) => {
     if (!layerBuckets.has(layer)) layerBuckets.set(layer, []);
     layerBuckets.get(layer).push(id);
   });

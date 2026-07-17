@@ -6,11 +6,10 @@ import {
 } from "../schema-client.js";
 import { PAGE_INTRO, helpParagraph } from "./help-text.js";
 import { renderStudioItemEditor } from "./item-editor.js";
-import { renderSetupWizard } from "./setup-wizard.js";
+import { renderStudioWorkspacePanel } from "./studio-workspace-panel.js";
 import { renderWorkspaceMap } from "./workspace-map.js";
 
 const MODE_KEY = "designMode";
-const SETUP_VIEW_KEY = "designSetupView";
 const MAP_DENSITY_KEY = "designMapDensity";
 const MAP_JUNCTION_KEY = "designMapJunctions";
 
@@ -18,8 +17,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let workingSchema = structuredClone(getSchema());
   let mode = localStorage.getItem(MODE_KEY) || "setup";
   if (mode === "map" || mode === "advanced") mode = "setup";
-  let setupView = localStorage.getItem(SETUP_VIEW_KEY) || "studio";
-  if (setupView === "map") setupView = "studio";
   let mapDensity = localStorage.getItem(MAP_DENSITY_KEY) || "simple";
   let showJunctionTables = localStorage.getItem(MAP_JUNCTION_KEY) === "true";
   let selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
@@ -36,10 +33,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   howDetails.innerHTML = `
     <summary>How Design works</summary>
     <ol class="design-how-list">
-      <li><strong>Items</strong> — kinds of records you track</li>
-      <li><strong>Info</strong> — values on an Item, or links to other Items (you create types explicitly)</li>
-      <li><strong>Connections</strong> — how Items relate</li>
-      <li><strong>Views</strong> — tabs in Workspace</li>
+      <li><strong>Items</strong> — kinds of records you track (editor + map)</li>
+      <li><strong>Fields</strong> — values on an Item; pick an Item type to link</li>
+      <li><strong>Workspace tabs</strong> — names and layout in Workspace</li>
       <li><strong>Apply Changes</strong> — make it live</li>
     </ol>
   `;
@@ -52,13 +48,8 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   packageSelect.className = "design-package-select";
   packageSelect.innerHTML = "<option value=''>Start from a template…</option>";
 
-  const viewSelect = document.createElement("select");
-  viewSelect.className = "design-package-select";
-  viewSelect.innerHTML = `
-    <option value="studio">Studio (map + editor)</option>
-    <option value="steps">Step by step</option>
-  `;
-  viewSelect.value = setupView === "steps" ? "steps" : "studio";
+  const summaryEl = document.createElement("span");
+  summaryEl.className = "design-summary muted";
 
   const statusEl = document.createElement("span");
   statusEl.className = "design-status muted";
@@ -80,10 +71,10 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   toolbar.append(
     packageSelect,
-    viewSelect,
     validateBtn,
     previewBtn,
     applyBtn,
+    summaryEl,
     statusEl
   );
 
@@ -100,18 +91,31 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   function onSchemaChange(updated) {
     workingSchema = updated;
     statusEl.textContent = "Unsaved changes";
+    updateSummary();
   }
 
-  function syncToolbar() {
-    viewSelect.value = setupView === "steps" ? "steps" : "studio";
+  function updateSummary() {
+    const entityCount = Object.keys(workingSchema.entity_types || {}).length;
+    const fieldCount = Object.values(workingSchema.entity_types || {}).reduce(
+      (n, e) => n + Object.keys(e.fields || {}).length,
+      0
+    );
+    const relCount = (workingSchema.relationships || []).length;
+    const viewCount = (workingSchema.views || []).length;
+    summaryEl.textContent = `${entityCount} types · ${fieldCount} fields · ${relCount} links · ${viewCount} tabs`;
   }
 
-  viewSelect.addEventListener("change", () => {
-    setupView = viewSelect.value;
-    localStorage.setItem(SETUP_VIEW_KEY, setupView);
-    syncToolbar();
-    renderMain();
-  });
+  function renderMain() {
+    updateSummary();
+    main.innerHTML = "";
+    const entityCount = Object.keys(workingSchema.entity_types || {}).length;
+    if (!entityCount && !startedBlank) {
+      main.appendChild(renderEmptyState());
+      return;
+    }
+
+    renderStudio();
+  }
 
   async function doApply() {
     try {
@@ -147,30 +151,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   function doPreview() {
     setSchema(workingSchema);
     onPreview();
-  }
-
-  function renderMain() {
-    syncToolbar();
-    main.innerHTML = "";
-    const entityCount = Object.keys(workingSchema.entity_types || {}).length;
-    if (!entityCount && !startedBlank) {
-      main.appendChild(renderEmptyState());
-      return;
-    }
-
-    if (setupView === "steps") {
-      renderSetupWizard({
-        container: main,
-        schema: workingSchema,
-        onChange: onSchemaChange,
-        onApply: doApply,
-        onPreview: doPreview,
-        statusEl,
-      });
-      return;
-    }
-
-    renderStudio();
   }
 
   function renderStudio() {
@@ -230,22 +210,29 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     split.append(left, right);
     main.appendChild(split);
 
+    function selectEntity(id) {
+      selectedEntityId = id;
+      refreshEditor();
+      mapApi?.setSelected(id);
+    }
+
+    function onStudioChange(updated) {
+      onSchemaChange(updated);
+      workingSchema = updated;
+      if (!selectedEntityId || !workingSchema.entity_types[selectedEntityId]) {
+        selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
+      }
+      bindMap();
+      refreshEditor();
+    }
+
     function refreshEditor() {
       renderStudioItemEditor({
         container: left,
         schema: workingSchema,
         entityId: selectedEntityId,
-        onSelectEntity: (id) => {
-          selectedEntityId = id;
-          refreshEditor();
-          mapApi?.setSelected(id);
-        },
-        onChange: (updated) => {
-          onSchemaChange(updated);
-          workingSchema = updated;
-          bindMap();
-          refreshEditor();
-        },
+        onSelectEntity: selectEntity,
+        onChange: onStudioChange,
       });
     }
 
@@ -256,19 +243,8 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         density: mapDensity,
         showJunctionTables,
         selectedEntityId,
-        onSelectEntity: (id) => {
-          selectedEntityId = id;
-          refreshEditor();
-        },
-        onChange: (updated) => {
-          onSchemaChange(updated);
-          workingSchema = updated;
-          if (!selectedEntityId || !workingSchema.entity_types[selectedEntityId]) {
-            selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
-          }
-          bindMap();
-          refreshEditor();
-        },
+        onSelectEntity: selectEntity,
+        onChange: onStudioChange,
       });
     }
 
@@ -293,8 +269,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         setSchema(workingSchema);
         selectedEntityId = Object.keys(workingSchema.entity_types)[0] || null;
         startedBlank = false;
-        setupView = "studio";
-        localStorage.setItem(SETUP_VIEW_KEY, setupView);
         statusEl.textContent = "Notes template loaded";
         renderMain();
       } catch (err) {
@@ -309,7 +283,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       workingSchema = blankWorkspace(workingSchema);
       startedBlank = true;
       selectedEntityId = null;
-      setupView = "studio";
       onSchemaChange(workingSchema);
       renderMain();
     });

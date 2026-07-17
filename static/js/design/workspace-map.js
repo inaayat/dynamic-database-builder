@@ -234,6 +234,37 @@ export function renderWorkspaceMap({
     g.appendChild(gEl);
   }
 
+  function orthogonalPathPoints(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      const midX = (a.x + b.x) / 2;
+      return [
+        [a.x, a.y],
+        [midX, a.y],
+        [midX, b.y],
+        [b.x, b.y],
+      ];
+    }
+    const midY = (a.y + b.y) / 2;
+    return [
+      [a.x, a.y],
+      [a.x, midY],
+      [b.x, midY],
+      [b.x, b.y],
+    ];
+  }
+
+  function pathFromPoints(points) {
+    return points
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`)
+      .join(" ");
+  }
+
+  function segmentAngle(from, to) {
+    return Math.atan2(to[1] - from[1], to[0] - from[0]);
+  }
+
   function drawEdge(svg, cRect, fromEl, toEl, rel, { active = false } = {}) {
     if (!fromEl || !toEl) return;
     const rA = fromEl.getBoundingClientRect();
@@ -244,28 +275,28 @@ export function renderWorkspaceMap({
     const bcy = rB.top + rB.height / 2 - cRect.top;
     const a = anchorPoint(rA, bcx, bcy, cRect);
     const b = anchorPoint(rB, acx, acy, cRect);
+    const points = orthogonalPathPoints(a, b);
 
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", String(a.x));
-    line.setAttribute("y1", String(a.y));
-    line.setAttribute("x2", String(b.x));
-    line.setAttribute("y2", String(b.y));
-    line.setAttribute("class", "erd-line" + (active ? " erd-line-active" : ""));
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathFromPoints(points));
+    path.setAttribute("class", "erd-line" + (active ? " erd-line-active" : ""));
+    path.setAttribute("fill", "none");
 
     const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = `${rel.from} ${storageLabel(rel.storage)} ${rel.to}`;
-    line.appendChild(title);
-    svg.appendChild(line);
+    path.appendChild(title);
+    svg.appendChild(path);
 
-    const angleA = Math.atan2(b.y - a.y, b.x - a.x);
-    const angleB = Math.atan2(a.y - b.y, a.x - b.x);
+    const angleA = segmentAngle(points[0], points[1]);
+    const angleB = segmentAngle(points[points.length - 2], points[points.length - 1]);
     const fromMark = rel.storage === "junction" ? "many" : "one";
     const markClass = active ? "erd-card-mark erd-card-mark-active" : "erd-card-mark";
     drawCardinality(svg, a.x, a.y, angleA, fromMark, markClass);
     drawCardinality(svg, b.x, b.y, angleB, "many", markClass);
 
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2;
+    const midSeg = Math.floor((points.length - 1) / 2);
+    const mx = (points[midSeg][0] + points[midSeg + 1][0]) / 2;
+    const my = (points[midSeg][1] + points[midSeg + 1][1]) / 2;
     const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
     label.setAttribute("x", String(mx));
     label.setAttribute("y", String(my - 4));

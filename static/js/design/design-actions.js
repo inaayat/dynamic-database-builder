@@ -47,6 +47,101 @@ export function entityLabelsFromName(name) {
   return { label, label_plural: label + "s" };
 }
 
+/** Update type title; plural stays internal for defaults. */
+export function syncEntityTitle(entity, title) {
+  const trimmed = title?.trim();
+  if (!trimmed) return;
+  entity.label = trimmed;
+  const labels = entityLabelsFromName(trimmed);
+  if (labels) entity.label_plural = labels.label_plural;
+}
+
+export function defaultViewLabelForEntity(entity) {
+  return entity?.label_plural || entity?.label || "Items";
+}
+
+export function createView(schema, { entityId, type, label }) {
+  const entityDef = schema.entity_types[entityId];
+  if (!entityDef) return { error: "Type not found." };
+  if (type !== "grid" && type !== "catalog") return { error: "Pick Table or List." };
+
+  let viewId = `${entityId}_${type}`;
+  if ((schema.views || []).some((v) => v.id === viewId)) {
+    viewId = `${entityId}_${type}_${(schema.views || []).length + 1}`;
+  }
+
+  const view = {
+    id: viewId,
+    type,
+    entity: entityId,
+    label: label?.trim() || defaultViewLabelForEntity(entityDef),
+  };
+  if (type === "grid") {
+    view.primary = !(schema.views || []).some((v) => v.primary);
+    view.columns_from_fields = Object.entries(entityDef.fields || {})
+      .filter(([, f]) => f.editor?.column && !f.design_only)
+      .map(([n]) => n);
+    const container = Object.entries(schema.entity_types).find(
+      ([, e]) => e.primitive === "container"
+    );
+    if (container) view.container_entity = container[0];
+  }
+  schema.views = schema.views || [];
+  schema.views.push(view);
+  return { id: viewId };
+}
+
+export function removeView(schema, viewId) {
+  schema.views = (schema.views || []).filter((v) => v.id !== viewId);
+}
+
+export const VIEW_TYPE_OPTIONS = [
+  { value: "grid", label: "Table" },
+  { value: "catalog", label: "List" },
+];
+
+export function updateViewLabel(view, label) {
+  const trimmed = label?.trim();
+  if (!trimmed) return;
+  view.label = trimmed;
+}
+
+export function updateViewType(view, schema, newType) {
+  if (newType !== "grid" && newType !== "catalog") return { error: "Invalid tab type." };
+  if (view.type === newType) return { ok: true };
+  view.type = newType;
+  const entityDef = schema.entity_types[view.entity];
+  if (newType === "grid") {
+    if (!schema.views?.some((v) => v.primary && v.id !== view.id)) {
+      view.primary = true;
+    }
+    view.columns_from_fields = Object.entries(entityDef?.fields || {})
+      .filter(([, f]) => f.editor?.column && !f.design_only)
+      .map(([n]) => n);
+    const container = Object.entries(schema.entity_types).find(
+      ([, e]) => e.primitive === "container"
+    );
+    if (container) view.container_entity = container[0];
+  } else {
+    delete view.primary;
+    delete view.columns_from_fields;
+    delete view.container_entity;
+  }
+  return { ok: true };
+}
+
+export function updateViewEntity(view, schema, entityId) {
+  if (!schema.entity_types[entityId]) return { error: "Type not found." };
+  view.entity = entityId;
+  if (view.type === "grid") {
+    const entityDef = schema.entity_types[entityId];
+    view.columns_from_fields = Object.entries(entityDef?.fields || {})
+      .filter(([, f]) => f.editor?.column && !f.design_only)
+      .map(([n]) => n);
+  }
+  return { ok: true };
+}
+
 /** Create a type in schema; returns { id } or { error }. */
 export function createItemType(schema, name) {
   const labels = entityLabelsFromName(name);
@@ -67,6 +162,93 @@ export function updateFieldLabel(entity, fieldName, label) {
   if (!field) return;
   field.editor = field.editor || {};
   field.editor.header = label.trim() || fieldName;
+}
+
+/** Change a field's value type; preserves label and column settings. */
+export function updateFieldType(entity, fieldName, newType) {
+  const field = entity.fields?.[fieldName];
+  if (!field) return { error: "Field not found." };
+  if (isPrimaryKey(entity, fieldName)) return { error: "Cannot change the key field." };
+  if (field.type === "foreign_key" || field.type === "item_link") {
+    return { error: "Change link fields via Item type." };
+  }
+  if (!FIELD_CATALOG.some((f) => f.type === newType)) {
+    return { error: "Invalid field type." };
+  }
+
+  const header = field.editor?.header || fieldName;
+  const next = defaultFieldDef(newType, header);
+  next.editor = {
+    ...next.editor,
+    column: field.editor?.column ?? next.editor?.column,
+    order: field.editor?.order,
+    widget: field.editor?.widget,
+    header,
+  };
+  entity.fields[fieldName] = next;
+  return { ok: true };
+}
+
+/** Update which Item type a link marker field points at. */
+export function updateFieldLinkEntity(schema, entityId, fieldName, targetId) {
+  const entity = schema.entity_types[entityId];
+  const field = entity?.fields?.[fieldName];
+  if (!field || field.type !== "item_link") return { error: "Not a link field." };
+  if (!targetId || !schema.entity_types[targetId]) return { error: "Pick an Item type." };
+  field.link_entity = targetId;
+  return { ok: true };
+}
+
+/** Turn a value field into a link to an Item type (creates relationship + link marker). */
+export function convertFieldToLink(schema, entityId, fieldName, opts) {
+  const entity = schema.entity_types[entityId];
+  const field = entity?.fields?.[fieldName];
+  if (!field) return { error: "Field not found." };
+  if (isPrimaryKey(entity, fieldName)) return { error: "Cannot link the key field." };
+  if (field.type === "item_link" || (field.type === "foreign_key" && field.link_to)) {
+    return { error: "Already a link." };
+  }
+
+  const label = field.editor?.header || fieldName;
+  removeField(schema, entityId, fieldName);
+
+  let targetId = opts.targetId;
+  if (opts.createNew) {
+    const created = createItemType(schema, opts.newLabel || label);
+    if (created.error) return created;
+    targetId = created.id;
+  }
+  if (!targetId || !schema.entity_types[targetId]) {
+    return { error: "Pick an Item type." };
+  }
+
+  const existingRel = (schema.relationships || []).find(
+    (r) =>
+      (r.from === entityId && r.to === targetId) ||
+      (r.from === targetId && r.to === entityId)
+  );
+  if (existingRel) {
+    const markerName = slugify(label);
+    if (!entity.fields[markerName]) {
+      entity.fields[markerName] = {
+        type: "item_link",
+        link_entity: targetId,
+        relationship_id: existingRel.id,
+        editor: { column: true, header: label, widget: "item_chips" },
+        publish: false,
+        design_only: true,
+      };
+    }
+    return { kind: "link", field: markerName, targetId };
+  }
+
+  return addLinkToEntity(schema, entityId, {
+    label,
+    targetId,
+    createNew: false,
+    newLabel: opts.newLabel || label,
+    storage: opts.storage || "junction",
+  });
 }
 
 export function addValueToEntity(schema, entityId, { label, type }) {
@@ -522,12 +704,22 @@ export async function promptAddConnection(schema) {
 export function removeField(schema, entityId, fieldName) {
   const entity = schema.entity_types[entityId];
   if (!entity || isPrimaryKey(entity, fieldName)) return false;
+  const field = entity.fields[fieldName];
+  const relId = field?.relationship_id;
   delete entity.fields[fieldName];
   (schema.views || []).forEach((v) => {
     if (v.columns_from_fields) {
       v.columns_from_fields = v.columns_from_fields.filter((c) => c !== fieldName);
     }
   });
+  if (relId && field?.type === "item_link") {
+    const stillUsed = Object.values(schema.entity_types || {}).some((ent) =>
+      Object.values(ent.fields || {}).some((f) => f.relationship_id === relId)
+    );
+    if (!stillUsed) {
+      schema.relationships = (schema.relationships || []).filter((r) => r.id !== relId);
+    }
+  }
   return true;
 }
 

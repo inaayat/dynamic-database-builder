@@ -9,11 +9,11 @@ export const PAGE_INTRO = {
 
 export const PANEL_HELP = {
   entities:
-    "Entities are the nouns in your schema — each becomes a SQLite table. Entities are the things you want to organize Every workspace starts with one or more entities, and it is a type of item that you want to keep track of.",
+    "Items are the kinds of records you track — each becomes a table in your database.",
   connections:
     "Connections describe how Items relate: one-to-many, many-to-many, or an optional link.",
   views:
-    "Views are tabs in Workspace. A Table edits many rows; a List is a compact roster.",
+    "Tabs in Workspace. Table = spreadsheet-style editing of many rows; List = a simpler roster for lookup Items (tags, references).",
 };
 
 export const PRIMITIVE_HELP = {
@@ -61,13 +61,13 @@ export const STORAGE_HELP = {
 export const VIEW_HELP = {
   grid: {
     label: "Table",
-    summary: "View and edit many records quickly.",
-    bestFor: ["Notes", "Grades", "Students", "Tasks"],
+    summary: "Spreadsheet-style — edit many rows with inline fields and columns from your schema.",
+    bestFor: ["Notes", "Tasks", "Students", "main working data"],
   },
   catalog: {
     label: "List",
-    summary: "A simple compact roster.",
-    bestFor: ["Tags", "Teachers", "Classrooms", "Subjects"],
+    summary: "Compact roster — simpler rows, good for lookup Items you pick from elsewhere.",
+    bestFor: ["Tags", "References", "Teachers", "Subjects"],
   },
 };
 
