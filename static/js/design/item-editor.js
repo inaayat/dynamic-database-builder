@@ -15,7 +15,7 @@ import {
   updateFieldType,
   updateFieldLinkEntity,
 } from "./design-actions.js";
-import { matchEntityByName } from "./field-suggest.js";
+import { matchEntityByName, resolveEntityByName } from "./field-suggest.js";
 import { helpParagraph, PANEL_HELP } from "./help-text.js";
 
 export function renderStudioItemEditor({
@@ -261,30 +261,76 @@ function isLinkField(fdef) {
   return fdef.type === "item_link" || (fdef.type === "foreign_key" && fdef.link_to);
 }
 
-function populateItemTypeSelect(itemSel, schema, entityId, { value = "", includeNew = true }) {
-  itemSel.innerHTML = "";
-  const none = document.createElement("option");
-  none.value = "";
-  none.textContent = "—";
-  none.selected = !value;
-  itemSel.appendChild(none);
+function populateItemTypeDatalist(schema, entityId, datalist) {
+  datalist.innerHTML = "";
   Object.entries(schema.entity_types || {}).forEach(([id, e]) => {
     if (id === entityId) return;
     const opt = document.createElement("option");
-    opt.value = id;
-    opt.textContent = e.label;
-    opt.selected = id === value;
-    itemSel.appendChild(opt);
+    opt.value = e.label;
+    datalist.appendChild(opt);
   });
-  if (includeNew) {
-    const create = document.createElement("option");
-    create.value = "__new__";
-    create.textContent = "New type…";
-    create.selected = value === "__new__";
-    itemSel.appendChild(create);
-  }
 }
 
+/** Typeable Item picker — link to existing type or create a new one on Enter. */
+function createItemTypeCombobox(schema, entityId, {
+  initialTargetId = "",
+  disabled = false,
+  placeholder = "Link or create Item…",
+  allowCreate = true,
+  onCommit,
+}) {
+  const wrap = document.createElement("div");
+  wrap.className = "ie-item-type-combo";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "ie-input ie-field-item-select";
+  input.placeholder = placeholder;
+  input.disabled = disabled;
+  input.autocomplete = "off";
+
+  const listId = `item-types-${entityId}-${Math.random().toString(36).slice(2, 9)}`;
+  input.setAttribute("list", listId);
+  const datalist = document.createElement("datalist");
+  datalist.id = listId;
+  populateItemTypeDatalist(schema, entityId, datalist);
+
+  if (initialTargetId) {
+    const ent = schema.entity_types[initialTargetId];
+    if (ent) input.value = ent.label;
+  }
+
+  let lastCommitted = input.value.trim();
+
+  function commit() {
+    const raw = input.value.trim();
+    if (!raw || raw === lastCommitted) return;
+    const match = resolveEntityByName(schema, entityId, raw);
+    if (!match && !allowCreate) {
+      input.setCustomValidity("Pick an existing Item type.");
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
+    lastCommitted = raw;
+    onCommit({
+      raw,
+      targetId: match?.id || null,
+      createNew: !match,
+    });
+  }
+
+  input.addEventListener("change", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    }
+  });
+
+  wrap.append(input, datalist);
+  return { wrap, input, reset: () => { input.value = ""; lastCommitted = ""; } };
+}
 
 function renderFieldItem(fname, fdef, entity, schema, entityId, onChange, { inline = false } = {}) {
   const system = isPrimaryKey(entity, fname);
@@ -340,49 +386,54 @@ function renderFieldItem(fname, fdef, entity, schema, entityId, onChange, { inli
     });
   }
 
-  const itemSel = document.createElement("select");
-  itemSel.className = "ie-input ie-field-item-select";
   const linkTarget = fdef.link_entity || fdef.link_to || "";
-  populateItemTypeSelect(itemSel, schema, entityId, {
-    value: link ? linkTarget : "",
-    includeNew: !link,
-  });
 
-  if (link && fdef.type === "item_link") {
-    itemSel.addEventListener("change", () => {
-      if (!itemSel.value || itemSel.value === "__new__") return;
-      const res = updateFieldLinkEntity(schema, entityId, fname, itemSel.value);
-      if (res.error) {
-        itemSel.setCustomValidity(res.error);
-        itemSel.reportValidity();
-        return;
-      }
-      itemSel.setCustomValidity("");
-      onChange(schema);
+  if (system) {
+    const stub = document.createElement("input");
+    stub.type = "text";
+    stub.className = "ie-input ie-field-item-select";
+    stub.value = "—";
+    stub.disabled = true;
+    row.append(labelInput, typeSel, stub);
+  } else if (link && fdef.type === "item_link") {
+    const combo = createItemTypeCombobox(schema, entityId, {
+      initialTargetId: linkTarget,
+      placeholder: "Linked Item",
+      allowCreate: false,
+      onCommit: ({ targetId }) => {
+        if (!targetId) return;
+        const res = updateFieldLinkEntity(schema, entityId, fname, targetId);
+        if (res.error) {
+          combo.input.setCustomValidity(res.error);
+          combo.input.reportValidity();
+          return;
+        }
+        combo.input.setCustomValidity("");
+        onChange(schema);
+      },
     });
-  } else if (!system && !link) {
-    itemSel.addEventListener("change", () => {
-      if (!itemSel.value) return;
-      const createNew = itemSel.value === "__new__";
-      const res = convertFieldToLink(schema, entityId, fname, {
-        targetId: createNew ? null : itemSel.value,
-        createNew,
-        newLabel: labelInput.value.trim() || fname,
-      });
-      if (res.error) {
-        itemSel.setCustomValidity(res.error);
-        itemSel.reportValidity();
-        itemSel.value = "";
-        return;
-      }
-      itemSel.setCustomValidity("");
-      onChange(schema);
-    });
+    row.append(labelInput, typeSel, combo.wrap);
   } else {
-    itemSel.disabled = true;
+    const combo = createItemTypeCombobox(schema, entityId, {
+      placeholder: "Link or create Item…",
+      allowCreate: true,
+      onCommit: ({ raw, targetId, createNew }) => {
+        const res = convertFieldToLink(schema, entityId, fname, {
+          targetId: createNew ? null : targetId,
+          createNew,
+          newLabel: raw,
+        });
+        if (res.error) {
+          combo.input.setCustomValidity(res.error);
+          combo.input.reportValidity();
+          return;
+        }
+        combo.input.setCustomValidity("");
+        onChange(schema);
+      },
+    });
+    row.append(labelInput, typeSel, combo.wrap);
   }
-
-  row.append(labelInput, typeSel, itemSel);
 
   if (!system) {
     const del = document.createElement("button");
@@ -448,35 +499,17 @@ function renderAddFieldRow(schema, entityId, onChange) {
     fieldTypeSel.appendChild(opt);
   });
 
-  const itemTypeSel = document.createElement("select");
-  itemTypeSel.className = "ie-input ie-add-item-type";
-  itemTypeSel.title = "Item type (link)";
-
-  function rebuildItemOptions(preferredId = "") {
-    const prev = preferredId || itemTypeSel.value;
-    itemTypeSel.innerHTML = "";
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "—";
-    itemTypeSel.appendChild(none);
-    Object.entries(schema.entity_types || {}).forEach(([id, e]) => {
-      if (id === entityId) return;
-      const opt = document.createElement("option");
-      opt.value = id;
-      opt.textContent = e.label;
-      itemTypeSel.appendChild(opt);
-    });
-    const create = document.createElement("option");
-    create.value = "__new__";
-    create.textContent = "New type…";
-    itemTypeSel.appendChild(create);
-    const values = [...itemTypeSel.options].map((o) => o.value);
-    itemTypeSel.value = values.includes(prev) ? prev : "";
-    syncFieldTypeState();
-  }
+  const itemTypeCombo = createItemTypeCombobox(schema, entityId, {
+    placeholder: "Link or create Item…",
+    allowCreate: true,
+    onCommit: () => {},
+  });
+  itemTypeCombo.input.title = "Item type (link)";
+  itemTypeCombo.input.addEventListener("input", syncFieldTypeState);
+  itemTypeCombo.input.addEventListener("change", syncFieldTypeState);
 
   function syncFieldTypeState() {
-    const linking = Boolean(itemTypeSel.value);
+    const linking = Boolean(itemTypeCombo.input.value.trim());
     fieldTypeSel.disabled = linking;
     fieldTypeSel.classList.toggle("ie-input-muted", linking);
   }
@@ -484,7 +517,7 @@ function renderAddFieldRow(schema, entityId, onChange) {
   function autoSelectItemFromName() {
     const match = matchEntityByName(schema, entityId, nameInput.value);
     if (match) {
-      itemTypeSel.value = match.id;
+      itemTypeCombo.input.value = match.entity.label;
       syncFieldTypeState();
     }
   }
@@ -494,20 +527,19 @@ function renderAddFieldRow(schema, entityId, onChange) {
   add.className = "btn btn-primary btn-sm";
   add.textContent = "Add";
 
-  row.append(nameInput, fieldTypeSel, itemTypeSel, add);
+  row.append(nameInput, fieldTypeSel, itemTypeCombo.wrap, add);
   body.appendChild(row);
   details.appendChild(body);
 
   function closeAndRefresh() {
     details.open = false;
     nameInput.value = "";
-    rebuildItemOptions("");
+    itemTypeCombo.reset();
+    syncFieldTypeState();
     onChange(schema);
   }
 
   nameInput.addEventListener("input", autoSelectItemFromName);
-
-  itemTypeSel.addEventListener("change", syncFieldTypeState);
 
   add.addEventListener("click", () => {
     const label = nameInput.value.trim();
@@ -518,15 +550,15 @@ function renderAddFieldRow(schema, entityId, onChange) {
     }
     nameInput.setCustomValidity("");
 
-    const itemChoice = itemTypeSel.value;
+    const linkText = itemTypeCombo.input.value.trim();
 
-    if (itemChoice) {
-      const createNew = itemChoice === "__new__";
+    if (linkText) {
+      const match = resolveEntityByName(schema, entityId, linkText);
       const res = addLinkToEntity(schema, entityId, {
         label,
-        targetId: createNew ? null : itemChoice,
-        createNew,
-        newLabel: label,
+        targetId: match?.id || null,
+        createNew: !match,
+        newLabel: linkText,
         storage: "junction",
       });
       if (res.error) {
@@ -549,7 +581,7 @@ function renderAddFieldRow(schema, entityId, onChange) {
     closeAndRefresh();
   });
 
-  rebuildItemOptions();
+  syncFieldTypeState();
   details.addEventListener("toggle", () => {
     if (details.open) setTimeout(() => nameInput.focus(), 0);
   });

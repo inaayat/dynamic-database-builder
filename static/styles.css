@@ -1400,6 +1400,16 @@ main { max-width: none; width: 100%; }
   grid-template-columns: 11rem 1fr auto;
 }
 
+.ie-item-type-combo {
+  min-width: 0;
+}
+
+.ie-item-type-combo .ie-field-item-select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 .chip-picker-create {
   display: flex;
   gap: 0.4rem;
