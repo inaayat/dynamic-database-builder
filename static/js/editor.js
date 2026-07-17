@@ -49,8 +49,15 @@ async function loadSchema() {
       `${schema.site.id} · schema ${schema.schema_version}`;
 
     renderViewTabs();
-    initDesign();
-    if (status) status.textContent = "";
+    try {
+      initDesign();
+    } catch (err) {
+      if (status) {
+        status.textContent = "Design map failed to load: " + err.message;
+        status.classList.add("error");
+      }
+    }
+    if (status && !status.classList.contains("error")) status.textContent = "";
   } catch (err) {
     if (status) {
       status.textContent = "Failed to load schema: " + err.message;

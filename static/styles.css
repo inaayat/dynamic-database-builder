@@ -1758,6 +1758,12 @@ button.map-chip:hover,
   z-index: 0;
 }
 
+.erd-layer {
+  position: relative;
+  min-width: 100%;
+  min-height: 280px;
+}
+
 .erd-tables {
   position: relative;
   z-index: 1;
@@ -1769,16 +1775,18 @@ button.map-chip:hover,
 }
 
 .erd-table {
+  position: absolute;
+  width: 176px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 5%, transparent);
-  cursor: pointer;
+  cursor: default;
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
-  align-self: start;
+  z-index: 1;
 }
 
 .erd-table:hover {
@@ -1797,6 +1805,45 @@ button.map-chip:hover,
   font-weight: 600;
   font-size: var(--fs-sm);
   overflow-wrap: anywhere;
+  cursor: grab;
+  user-select: none;
+}
+
+.erd-table-head:active {
+  cursor: grabbing;
+}
+
+.erd-junction {
+  width: 148px;
+  border-style: dashed;
+  opacity: 0.92;
+}
+
+.erd-junction-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.studio-map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+}
+
+.erd-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.erd-toggle input {
+  margin: 0;
 }
 
 .erd-table-body {

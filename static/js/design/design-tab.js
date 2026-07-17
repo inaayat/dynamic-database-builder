@@ -12,6 +12,7 @@ import { renderWorkspaceMap } from "./workspace-map.js";
 const MODE_KEY = "designMode";
 const SETUP_VIEW_KEY = "designSetupView";
 const MAP_DENSITY_KEY = "designMapDensity";
+const MAP_JUNCTION_KEY = "designMapJunctions";
 
 export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let workingSchema = structuredClone(getSchema());
@@ -20,6 +21,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let setupView = localStorage.getItem(SETUP_VIEW_KEY) || "studio";
   if (setupView === "map") setupView = "studio";
   let mapDensity = localStorage.getItem(MAP_DENSITY_KEY) || "simple";
+  let showJunctionTables = localStorage.getItem(MAP_JUNCTION_KEY) === "true";
   let selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
   let startedBlank = false;
   let mapApi = null;
@@ -184,6 +186,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     mapHead.className = "studio-map-head";
     const mapTitle = document.createElement("strong");
     mapTitle.textContent = "Map";
+    const mapControls = document.createElement("div");
+    mapControls.className = "studio-map-controls";
+
     const densitySelect = document.createElement("select");
     densitySelect.className = "erd-density-select";
     densitySelect.innerHTML = `
@@ -196,7 +201,27 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       localStorage.setItem(MAP_DENSITY_KEY, mapDensity);
       bindMap();
     });
-    mapHead.append(mapTitle, densitySelect);
+
+    const junctionLabel = document.createElement("label");
+    junctionLabel.className = "erd-toggle";
+    const junctionCheck = document.createElement("input");
+    junctionCheck.type = "checkbox";
+    junctionCheck.checked = showJunctionTables;
+    junctionCheck.addEventListener("change", () => {
+      showJunctionTables = junctionCheck.checked;
+      localStorage.setItem(MAP_JUNCTION_KEY, showJunctionTables ? "true" : "false");
+      bindMap();
+    });
+    junctionLabel.append(junctionCheck, document.createTextNode(" Link tables"));
+
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "btn btn-sm";
+    resetBtn.textContent = "Reset layout";
+    resetBtn.addEventListener("click", () => mapApi?.resetLayout());
+
+    mapControls.append(densitySelect, junctionLabel, resetBtn);
+    mapHead.append(mapTitle, mapControls);
 
     const mapMount = document.createElement("div");
     mapMount.className = "studio-map-mount";
@@ -229,6 +254,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         container: mapMount,
         schema: workingSchema,
         density: mapDensity,
+        showJunctionTables,
         selectedEntityId,
         onSelectEntity: (id) => {
           selectedEntityId = id;
@@ -408,6 +434,7 @@ function blankWorkspace(current) {
 /** Drop Design-only markers (e.g. item_link chips) before validate/apply. */
 function schemaForApi(schema) {
   const copy = structuredClone(schema);
+  delete copy.ui;
   Object.values(copy.entity_types || {}).forEach((ent) => {
     Object.entries(ent.fields || {}).forEach(([k, f]) => {
       if (f.design_only || f.type === "item_link") delete ent.fields[k];
