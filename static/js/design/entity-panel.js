@@ -5,9 +5,16 @@ import {
   isPrimaryKey,
   PRIMITIVES,
 } from "./field-presets.js";
-import { helpParagraph, PANEL_HELP, PRIMITIVE_HELP } from "./help-text.js";
+import {
+  ENTITY_EXAMPLES,
+  helpConceptList,
+  helpParagraph,
+  PANEL_HELP,
+  PRIMITIVE_HELP,
+  primitiveLabel,
+} from "./help-text.js";
 
-export function renderEntityPanel({ container, schema, onChange, onSelect }) {
+export function renderEntityPanel({ container, schema, onChange, onSelect, compactHelp = false }) {
   let selectedEntityId = null;
   let selectedField = null;
 
@@ -28,15 +35,14 @@ export function renderEntityPanel({ container, schema, onChange, onSelect }) {
     header.appendChild(addBtn);
     container.appendChild(header);
     container.appendChild(helpParagraph(PANEL_HELP.entities));
-
-    const primHelp = document.createElement("ul");
-    primHelp.className = "design-help-list";
-    Object.entries(PRIMITIVE_HELP).forEach(([id, text]) => {
-      const li = document.createElement("li");
-      li.innerHTML = `<code>${id}</code> — ${text}`;
-      primHelp.appendChild(li);
-    });
-    container.appendChild(primHelp);
+    if (!compactHelp) {
+      container.appendChild(helpParagraph(ENTITY_EXAMPLES));
+      container.appendChild(helpConceptList(PRIMITIVE_HELP));
+    } else {
+      container.appendChild(
+        helpParagraph("Types: Collection (group), Item (main records), Reference (reusable).")
+      );
+    }
 
     const list = document.createElement("ul");
     list.className = "design-list";
@@ -46,8 +52,9 @@ export function renderEntityPanel({ container, schema, onChange, onSelect }) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "design-list-btn";
-      btn.textContent = `${entity.label} (${id}) · ${entity.primitive}`;
-      btn.title = PRIMITIVE_HELP[entity.primitive] || "";
+      const kind = primitiveLabel(entity.primitive);
+      btn.textContent = `${entity.label} · ${kind}`;
+      btn.title = PRIMITIVE_HELP[entity.primitive]?.summary || "";
       btn.addEventListener("click", () => {
         selectedEntityId = id;
         selectedField = null;
@@ -89,6 +96,11 @@ export function renderEntityPanel({ container, schema, onChange, onSelect }) {
     const section = document.createElement("div");
     section.className = "design-inspector-section";
     section.innerHTML = `<h4>Fields — ${entity.label}</h4>`;
+    section.appendChild(
+      helpParagraph(
+        "Fields are the information you store for each record — title, summary, status, and so on."
+      )
+    );
 
     const addField = document.createElement("button");
     addField.type = "button";
@@ -101,8 +113,39 @@ export function renderEntityPanel({ container, schema, onChange, onSelect }) {
         alert("Field already exists");
         return;
       }
-      const type = prompt(`Field type (${FIELD_TYPES.join(", ")}):`, "text");
-      if (!type || !FIELD_TYPES.includes(type)) return;
+      const typePrompt = prompt(
+        "What kind of information is this?\n\n" +
+          "Examples: Text, Long text, Choice list, Date, Link, Checkbox, Bullet list\n\n" +
+          `Or enter a type id: ${FIELD_TYPES.join(", ")}`,
+        "Text"
+      );
+      if (!typePrompt) return;
+      const typeMap = {
+        text: "text",
+        "long text": "longtext",
+        longtext: "longtext",
+        "multi-line text": "multiline_text",
+        multiline_text: "multiline_text",
+        "bullet list": "bullet_list",
+        bullet_list: "bullet_list",
+        "choice list": "enum",
+        enum: "enum",
+        link: "url",
+        url: "url",
+        "whole number": "integer",
+        integer: "integer",
+        number: "number",
+        checkbox: "boolean",
+        boolean: "boolean",
+        date: "date",
+        "short id": "string",
+        string: "string",
+      };
+      const type = typeMap[typePrompt.toLowerCase().trim()];
+      if (!type || !FIELD_TYPES.includes(type)) {
+        alert(`Please choose a known field type.`);
+        return;
+      }
       const label = name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       entity.fields[name] = defaultFieldDef(type, label);
       const gridView = (schema.views || []).find(
@@ -170,10 +213,26 @@ export function renderEntityPanel({ container, schema, onChange, onSelect }) {
       alert("Entity already exists");
       return;
     }
-    const primLabels = PRIMITIVES.map((p) => p.id).join(", ");
-    const primitive = prompt(`Primitive (${primLabels}):`, "catalog_entry");
-    if (!primitive) return;
-    schema.entity_types[id] = defaultEntity(primitive, id);
+    const primLabels = PRIMITIVES.map((p) => p.label).join(", ");
+    const primitiveLabelPrompt = prompt(
+      `What kind of entity?\n\n` +
+        `Collection — a group that contains other items (Notebook, Project)\n` +
+        `Item — main records you edit every day (Note, Task)\n` +
+        `Reference — reusable items you link from many places (Tag, Author)\n\n` +
+        `Enter: ${primLabels}`,
+      "Reference"
+    );
+    if (!primitiveLabelPrompt) return;
+    const matched = PRIMITIVES.find(
+      (p) =>
+        p.label.toLowerCase() === primitiveLabelPrompt.toLowerCase() ||
+        p.id === primitiveLabelPrompt.toLowerCase().replace(/\s+/g, "_")
+    );
+    if (!matched) {
+      alert(`Please choose one of: ${primLabels}`);
+      return;
+    }
+    schema.entity_types[id] = defaultEntity(matched.id, id);
     selectedEntityId = id;
     emit();
     onSelect({ type: "entity", entityId: id });

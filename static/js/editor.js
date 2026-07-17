@@ -10,16 +10,17 @@ const tabs = document.querySelectorAll(".tab[data-mode]");
 const panels = document.querySelectorAll(".panel[data-mode]");
 
 tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    const mode = tab.dataset.mode;
-    tabs.forEach((t) => {
-      const on = t.dataset.mode === mode;
-      t.classList.toggle("active", on);
-      t.setAttribute("aria-selected", on);
-    });
-    panels.forEach((p) => p.classList.toggle("active", p.dataset.mode === mode));
-  });
+  tab.addEventListener("click", () => switchMode(tab.dataset.mode));
 });
+
+function switchMode(mode) {
+  tabs.forEach((t) => {
+    const on = t.dataset.mode === mode;
+    t.classList.toggle("active", on);
+    t.setAttribute("aria-selected", on);
+  });
+  panels.forEach((p) => p.classList.toggle("active", p.dataset.mode === mode));
+}
 
 function getDefaultContainerId() {
   if (!schema) return "main";
@@ -31,13 +32,8 @@ function getDefaultContainerId() {
   return container?.[1]?.fields?.id?.default || container?.[0] || "main";
 }
 
-function switchToEditTab() {
-  tabs.forEach((t) => {
-    const on = t.dataset.mode === "edit";
-    t.classList.toggle("active", on);
-    t.setAttribute("aria-selected", on);
-  });
-  panels.forEach((p) => p.classList.toggle("active", p.dataset.mode === "edit"));
+function switchToWorkspace() {
+  switchMode("edit");
 }
 
 async function loadSchema() {
@@ -47,7 +43,7 @@ async function loadSchema() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     schema = await res.json();
 
-    document.title = schema.site.title + " — Editor";
+    document.title = schema.site.title + " — Design";
     document.getElementById("site-title").textContent = schema.site.title;
     document.getElementById("site-meta").textContent =
       `${schema.site.id} · schema ${schema.schema_version}`;
@@ -74,7 +70,7 @@ function initDesign() {
       renderViewTabs();
     },
     onPreview: () => {
-      switchToEditTab();
+      switchToWorkspace();
       if (activeViewId) showView(activeViewId);
       else renderViewTabs();
     },
@@ -87,7 +83,7 @@ function renderViewTabs() {
   if (!nav || !schema) return;
   nav.innerHTML = "";
 
-  schema.views.forEach((view, i) => {
+  (schema.views || []).forEach((view, i) => {
     const btn = document.createElement("button");
     btn.className = "view-tab" + (i === 0 ? " active" : "");
     btn.textContent = view.label;
@@ -115,7 +111,7 @@ function renderViewTabs() {
     exportBar.append(jsonBtn, xlsxBtn);
   }
 
-  if (schema.views.length) showView(schema.views[0].id);
+  if (schema.views?.length) showView(schema.views[0].id);
 }
 
 async function showView(viewId) {

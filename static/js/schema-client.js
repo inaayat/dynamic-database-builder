@@ -43,12 +43,35 @@ export async function applySchema(schema) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.message || data.detail || `HTTP ${res.status}`);
+    const detail = formatApiDetail(data.detail || data.message || data);
+    const err = new Error(detail || `HTTP ${res.status}`);
     err.status = res.status;
     err.data = data;
     throw err;
   }
   return data;
+}
+
+function formatApiDetail(detail) {
+  if (detail == null) return "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+          const msg = item.msg || item.message || JSON.stringify(item);
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return String(item);
+      })
+      .join("; ");
+  }
+  if (typeof detail === "object") {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
 }
 
 export async function loadPackage(id) {

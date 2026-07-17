@@ -1,4 +1,4 @@
-/** Field type presets for new fields in Design tab. */
+/** Item presets — v1 is Items only (primitive stored as primary_row for backend compat). */
 
 export const FIELD_TYPES = [
   "text",
@@ -14,11 +14,10 @@ export const FIELD_TYPES = [
   "string",
 ];
 
-export const PRIMITIVES = [
-  { id: "container", label: "Container" },
-  { id: "primary_row", label: "Primary row" },
-  { id: "catalog_entry", label: "Catalog entry" },
-];
+/** UI only offers Item; backend still accepts legacy primitives on load. */
+export const PRIMITIVES = [{ id: "primary_row", label: "Item" }];
+
+export const ITEM_PRIMITIVE = "primary_row";
 
 export function defaultFieldDef(type, label) {
   const header = label || type;
@@ -74,64 +73,15 @@ export function defaultFieldDef(type, label) {
   }
 }
 
+/** Flat Item — no automatic container_id; links come from connections. */
 export function defaultEntity(primitive, id) {
-  const table = id.replace(/-/g, "_");
-  if (primitive === "container") {
-    return {
-      primitive,
-      label: id.charAt(0).toUpperCase() + id.slice(1),
-      label_plural: id.charAt(0).toUpperCase() + id.slice(1) + "s",
-      table: table + "s",
-      primary_key: "id",
-      fields: {
-        id: {
-          type: "string",
-          sqlite: { column: "TEXT", nullable: false, primary_key: true },
-          required: true,
-          publish: true,
-        },
-        title: {
-          type: "text",
-          sqlite: { column: "TEXT", nullable: false, default: "''" },
-          required: true,
-          publish: true,
-        },
-      },
-    };
-  }
-  if (primitive === "primary_row") {
-    return {
-      primitive,
-      label: id.charAt(0).toUpperCase() + id.slice(1),
-      label_plural: id.charAt(0).toUpperCase() + id.slice(1) + "s",
-      table: table + "s",
-      primary_key: ["container_id", "id"],
-      fields: {
-        container_id: {
-          type: "foreign_key",
-          sqlite: { column: "TEXT", nullable: false, primary_key: true },
-          publish: true,
-        },
-        id: {
-          type: "integer",
-          sqlite: { column: "INTEGER", nullable: false, primary_key: true },
-          required: true,
-          publish: true,
-        },
-        title: {
-          type: "text",
-          sqlite: { column: "TEXT", nullable: false, default: "''" },
-          editor: { column: true, order: 1, header: "Title" },
-          publish: true,
-        },
-      },
-    };
-  }
+  const table = (id.replace(/-/g, "_") + "s").replace(/ss$/, "s");
+  const label = id.charAt(0).toUpperCase() + id.slice(1);
   return {
-    primitive: "catalog_entry",
-    label: id.charAt(0).toUpperCase() + id.slice(1),
-    label_plural: id.charAt(0).toUpperCase() + id.slice(1) + "s",
-    table: table + "s",
+    primitive: ITEM_PRIMITIVE,
+    label,
+    label_plural: label.endsWith("s") ? label : label + "s",
+    table,
     primary_key: "id",
     fields: {
       id: {
@@ -140,10 +90,11 @@ export function defaultEntity(primitive, id) {
         required: true,
         publish: true,
       },
-      name: {
+      title: {
         type: "text",
         sqlite: { column: "TEXT", nullable: false, default: "''" },
         required: true,
+        editor: { column: true, order: 1, header: "Title" },
         publish: true,
       },
     },
@@ -154,4 +105,16 @@ export function isPrimaryKey(entity, fieldName) {
   const pk = entity.primary_key;
   if (Array.isArray(pk)) return pk.includes(fieldName);
   return pk === fieldName;
+}
+
+/** Soft link field created when user chooses One to Many / Optional Link. */
+export function defaultLinkField(fromId, label) {
+  return {
+    type: "foreign_key",
+    ref: `${fromId}.id`,
+    sqlite: { column: "TEXT", nullable: true },
+    editor: { column: false, header: label || fromId },
+    publish: true,
+    link_to: fromId,
+  };
 }
