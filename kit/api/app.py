@@ -6,13 +6,20 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from kit.api.routes import register_routes
+from kit.auth.neon import (
+    auth_base_url,
+    auth_enabled,
+    extract_bearer,
+    require_user,
+    validate_neon_token,
+)
 from kit.backup.github import BackupConfigError, backup_workspaces_to_git
 from kit.engine.db import connect, read_meta
 from kit.engine.dialect import use_postgres
@@ -31,6 +38,23 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = ROOT / "static"
 
 _runtime: Optional[Runtime] = None
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Require Neon Auth JWT on /api/* except public health/config endpoints."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        path = request.url.path
+        if not auth_enabled() or not path.startswith("/api/"):
+            return await call_next(request)
+        if path == "/api/health" or path == "/api/auth/config":
+            return await call_next(request)
+        token = extract_bearer(request)
+        claims = validate_neon_token(token) if token else None
+        if not claims:
+            return JSONResponse({"detail": "Authentication required"}, status_code=401)
+        request.state.user = claims
+        return await call_next(request)
 
 
 class DevStaticNoCacheMiddleware(BaseHTTPMiddleware):
@@ -98,11 +122,30 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
         version=package.schema_version,
     )
     app.add_middleware(DevStaticNoCacheMiddleware)
+    app.add_middleware(AuthMiddleware)
     app.state.runtime = runtime
     app.state.schema_loader = schema_loader
     app.state.root = ROOT
     app.state.workspace_store = WorkspaceStore(ROOT)
     app.state.workspace_store.ensure_initialized()
+
+    @app.get("/api/auth/config")
+    def get_auth_config() -> dict:
+        return {
+            "enabled": auth_enabled(),
+            "authUrl": auth_base_url() if auth_enabled() else None,
+            "providers": {"email": True, "google": True},
+        }
+
+    @app.get("/api/auth/me")
+    def get_auth_me(request: Request) -> dict:
+        user = require_user(request)
+        return {
+            "id": user.get("id") or user.get("sub"),
+            "email": user.get("email"),
+            "name": user.get("name"),
+            "emailVerified": user.get("emailVerified"),
+        }
 
     @app.get("/api/workspaces")
     def list_workspaces() -> dict:
@@ -289,6 +332,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
             "schema_version": pkg.schema_version,
             "package": sl.package_name,
             "source": sl.source,
+            "auth_enabled": auth_enabled(),
         }
 
     @app.post("/api/backup/github")

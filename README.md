@@ -49,9 +49,11 @@ API: `GET /api/schema`, `GET /api/health`, `GET /api/meta`
 
 ## Live deployment
 
-Production (Vercel + Neon Postgres): https://dynamic-database-builder.vercel.app
+Production (Vercel + Neon Postgres + Neon Auth): https://databaser.inaayat.xyz  
+Also: https://dynamic-database-builder.vercel.app
 
-When `DATABASE_URL` is set (as on Vercel), workspaces and data persist in Neon instead of local SQLite files.
+When `DATABASE_URL` is set (as on Vercel), workspaces and data persist in Neon instead of local SQLite files.  
+When `NEON_AUTH_BASE_URL` is set, email/password and Google sign-in are required to use the app.
 
 ## First sprint (Week 1)
 

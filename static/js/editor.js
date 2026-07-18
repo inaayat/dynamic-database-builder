@@ -206,16 +206,39 @@ function renderViewTabs(switchToFirst = true) {
 
   if (exportBar) {
     exportBar.innerHTML = "";
-    const jsonBtn = document.createElement("a");
-    jsonBtn.href = "/api/export/json.zip";
+    async function downloadExport(path, filename) {
+      const res = await fetch(path);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    const jsonBtn = document.createElement("button");
+    jsonBtn.type = "button";
     jsonBtn.className = "btn btn-sm";
     jsonBtn.textContent = "Export JSON";
-    jsonBtn.download = "export.zip";
-    const xlsxBtn = document.createElement("a");
-    xlsxBtn.href = "/api/export/xlsx";
+    jsonBtn.addEventListener("click", async () => {
+      try {
+        await downloadExport("/api/export/json.zip", "export.zip");
+      } catch (err) {
+        alert(err.message || "Export failed");
+      }
+    });
+    const xlsxBtn = document.createElement("button");
+    xlsxBtn.type = "button";
     xlsxBtn.className = "btn btn-sm";
     xlsxBtn.textContent = "Export XLSX";
-    xlsxBtn.download = "export.xlsx";
+    xlsxBtn.addEventListener("click", async () => {
+      try {
+        await downloadExport("/api/export/xlsx", "export.xlsx");
+      } catch (err) {
+        alert(err.message || "Export failed");
+      }
+    });
     const backupBtn = document.createElement("button");
     backupBtn.type = "button";
     backupBtn.className = "btn btn-sm";

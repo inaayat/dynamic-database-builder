@@ -19,6 +19,7 @@
         </div>
         <div class="header-actions">
           <span class="site-meta" id="site-meta"></span>
+          <div id="auth-user" class="auth-user-mount"></div>
           <div id="export-bar" class="export-bar"></div>
         </div>
       </header>
@@ -53,14 +54,50 @@
   </div>
 
   <script type="module">
-    import("/static/js/editor.js?v=8").catch((err) => {
-      const status = document.getElementById("load-status");
+    import {
+      initAuth,
+      installAuthenticatedFetch,
+      mountLoginGate,
+      mountUserChip,
+    } from "/static/js/auth-client.js?v=1";
+
+    const status = document.getElementById("load-status");
+
+    async function bootApp() {
+      mountUserChip({
+        mount: document.getElementById("auth-user"),
+        onSignedOut: () => window.location.reload(),
+      });
+      import("/static/js/editor.js?v=9").catch((err) => {
+        if (status) {
+          status.textContent = "Failed to load app: " + (err?.message || err);
+          status.classList.add("error");
+        }
+        console.error(err);
+      });
+    }
+
+    try {
+      const { enabled, user } = await initAuth();
+      installAuthenticatedFetch();
+      if (enabled && !user) {
+        if (status) status.textContent = "Sign in to continue";
+        mountLoginGate({
+          onAuthenticated: () => {
+            if (status) status.textContent = "Loading schema…";
+            bootApp();
+          },
+        });
+      } else {
+        bootApp();
+      }
+    } catch (err) {
       if (status) {
-        status.textContent = "Failed to load app: " + (err?.message || err);
+        status.textContent = "Auth failed: " + (err?.message || err);
         status.classList.add("error");
       }
       console.error(err);
-    });
+    }
   </script>
 </body>
 </html>
