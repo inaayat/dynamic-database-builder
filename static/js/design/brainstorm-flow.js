@@ -15,6 +15,7 @@ import {
   parseChipInput,
   placeScalar,
   promoteToItem,
+  ensureTitleDetailOnRecord,
   recordHasTitleLike,
   removeLink,
   scalarsOnRecord,
@@ -398,9 +399,14 @@ export function mountBrainstormFlow({
       });
 
       if (!recordHasTitleLike(state, item.id)) {
-        const hint = document.createElement("p");
-        hint.className = "brainstorm-card-hint muted";
+        const hint = document.createElement("button");
+        hint.type = "button";
+        hint.className = "brainstorm-card-hint btn btn-sm btn-link";
         hint.textContent = "Add a title or name detail";
+        hint.addEventListener("click", () => {
+          ensureTitleDetailOnRecord(state, item.id);
+          render();
+        });
         fields.appendChild(hint);
       }
 

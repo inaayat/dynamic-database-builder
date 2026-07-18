@@ -159,6 +159,37 @@ export function recordHasTitleLike(state, itemConceptId) {
   });
 }
 
+export function ensureTitleDetailOnRecord(state, itemConceptId) {
+  if (recordHasTitleLike(state, itemConceptId)) return;
+  const item = state.concepts.find((c) => c.id === itemConceptId);
+  const baseLabel =
+    item?.label && !/^(title|name)$/i.test(item.label) ? `${item.label} name` : "Title";
+  let label = baseLabel;
+  let n = 2;
+  while (
+    state.concepts.some(
+      (c) =>
+        c.label.toLowerCase() === label.toLowerCase() &&
+        state.placements.some((p) => p.conceptId === c.id)
+    )
+  ) {
+    label = `${baseLabel} ${n++}`;
+  }
+  let concept = state.concepts.find(
+    (c) => c.kind === "scalar" && c.label.toLowerCase() === label.toLowerCase()
+  );
+  if (!concept) {
+    concept = createConcept(label);
+    if (concept) {
+      concept.kind = "scalar";
+      state.concepts.push(concept);
+    }
+  }
+  if (concept?.kind === "scalar") {
+    placeScalar(state, concept.id, itemConceptId, "text");
+  }
+}
+
 export function stepReady(step, state) {
   switch (step) {
     case "dump":
@@ -170,10 +201,7 @@ export function stepReady(step, state) {
       );
     case "place": {
       const unplaced = unplacedScalars(state);
-      const missingTitle = itemConcepts(state).some(
-        (c) => !recordHasTitleLike(state, c.id)
-      );
-      return unplaced.length === 0 && !missingTitle;
+      return unplaced.length === 0;
     }
     case "link":
       return true;
@@ -200,7 +228,7 @@ export function stepBlockedReason(step, state) {
       if (unplaced.length) {
         return `Place ${unplaced.length} detail${unplaced.length === 1 ? "" : "s"} on a record`;
       }
-      return "Each record needs a title or name detail";
+      return "";
     }
     default:
       return "";

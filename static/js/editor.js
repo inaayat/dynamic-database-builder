@@ -106,10 +106,11 @@ async function applyWorkspacePayload(data, { startOver = false, created = false 
 }
 
 function initAppWorkspaceBar() {
-  const mount = document.getElementById("app-workspace-bar");
+  const mount = document.getElementById("app-workspace-sidebar");
   if (!mount) return;
   appWorkspaceBar = mountAppWorkspaceBar({
     mount,
+    variant: "sidebar",
     onChange: applyWorkspacePayload,
   });
 }
