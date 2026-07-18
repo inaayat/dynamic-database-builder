@@ -27,7 +27,7 @@ import {
   unplacedScalars,
   unplaceScalar,
 } from "./brainstorm.js";
-import { renderStudioWorkspacePanel } from "./studio-workspace-panel.js";
+import { renderWorkspaceTabsPanel } from "./workspace-tabs-panel.js";
 
 const STEPS = ["setup", "link", "review", "tabs"];
 
@@ -41,7 +41,6 @@ export function mountBrainstormFlow({
   container,
   baseSchema,
   onSchemaChange,
-  onOpenStudio,
   onApply,
 }) {
   const state = createBrainstormState();
@@ -66,16 +65,6 @@ export function mountBrainstormFlow({
   const footer = document.createElement("footer");
   footer.className = "brainstorm-footer";
 
-  const escapeBtn = document.createElement("button");
-  escapeBtn.type = "button";
-  escapeBtn.className = "btn btn-sm brainstorm-escape";
-  escapeBtn.textContent = "Open studio";
-  escapeBtn.hidden = true;
-  escapeBtn.addEventListener("click", () => {
-    syncSchema();
-    onOpenStudio?.(workingSchema);
-  });
-
   const reasonEl = document.createElement("span");
   reasonEl.className = "brainstorm-footer-reason muted";
 
@@ -92,7 +81,7 @@ export function mountBrainstormFlow({
   const footerActions = document.createElement("div");
   footerActions.className = "brainstorm-footer-actions";
   footerActions.append(backBtn, nextBtn);
-  footer.append(escapeBtn, reasonEl, footerActions);
+  footer.append(reasonEl, footerActions);
 
   shell.append(head, canvas, footer);
   container.innerHTML = "";
@@ -114,7 +103,6 @@ export function mountBrainstormFlow({
     titleEl.textContent = copy.title;
     coachEl.textContent = copy.coach;
 
-    escapeBtn.hidden = stepIndex < 1;
     backBtn.disabled = stepIndex === 0;
     nextBtn.textContent = step === "tabs" ? "Finish" : "Continue";
 
@@ -142,7 +130,7 @@ export function mountBrainstormFlow({
     if (currentStep() === "setup") commitSuggestedKinds(state);
     if (currentStep() === "tabs") {
       syncSchema();
-      onOpenStudio?.(workingSchema);
+      onApply?.();
       return;
     }
     if (currentStep() === "review") syncSchema();
@@ -718,7 +706,7 @@ export function mountBrainstormFlow({
     const linkList = document.createElement("ul");
     linkList.className = "brainstorm-review-list";
     if (!(schema.relationships || []).length) {
-      linkList.innerHTML = "<li class='muted'>No links yet — you can add them in the next step or in studio.</li>";
+      linkList.innerHTML = "<li class='muted'>No links yet — you can add them in the next step.</li>";
     } else {
       (schema.relationships || []).forEach((rel) => {
         const from = schema.entity_types[rel.from]?.label || rel.from;
@@ -738,14 +726,13 @@ export function mountBrainstormFlow({
     const schema = syncSchema();
     const panel = document.createElement("div");
     panel.className = "brainstorm-tabs-panel";
-    renderStudioWorkspacePanel({
+    renderWorkspaceTabsPanel({
       container: panel,
       schema,
       onChange: (updated) => {
         workingSchema = updated;
         onSchemaChange?.(updated);
       },
-      variant: "inline",
     });
     root.appendChild(panel);
   }

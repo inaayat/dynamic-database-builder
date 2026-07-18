@@ -6,27 +6,12 @@ import {
 } from "../schema-client.js?v=2";
 import { mountBrainstormFlow } from "./brainstorm-flow.js";
 import { PAGE_INTRO, helpParagraph } from "./help-text.js";
-import { renderStudioItemEditor } from "./item-editor.js";
-import { renderStudioWorkspacePanel } from "./studio-workspace-panel.js";
-import { renderWorkspaceMap } from "./workspace-map.js";
-
-const MODE_KEY = "designMode";
-const MAP_DENSITY_KEY = "designMapDensity";
-const MAP_JUNCTION_KEY = "designMapJunctions";
-const MAP_VISIBLE_KEY = "designMapVisible";
 
 export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let workingSchema = structuredClone(getSchema());
-  let mode = localStorage.getItem(MODE_KEY) || "setup";
-  if (mode === "map" || mode === "advanced") mode = "setup";
-  let mapDensity = localStorage.getItem(MAP_DENSITY_KEY) || "simple";
-  let showJunctionTables = localStorage.getItem(MAP_JUNCTION_KEY) === "true";
-  let showMap = localStorage.getItem(MAP_VISIBLE_KEY) === "true";
-  let selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
   let startedBlank = false;
   let brainstormMode = false;
   let brainstormApi = null;
-  let mapApi = null;
 
   const intro = document.createElement("div");
   intro.className = "design-intro";
@@ -77,30 +62,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   applyBtn.className = "btn btn-primary";
   applyBtn.textContent = "Apply Changes";
 
-  const mapToggleBtn = document.createElement("button");
-  mapToggleBtn.type = "button";
-  mapToggleBtn.className = "btn btn-sm design-map-toggle";
-  function syncMapToggleLabel() {
-    mapToggleBtn.textContent = showMap ? "Hide map" : "Show map";
-    mapToggleBtn.setAttribute("aria-pressed", showMap ? "true" : "false");
-  }
-  syncMapToggleLabel();
-  mapToggleBtn.addEventListener("click", () => {
-    showMap = !showMap;
-    localStorage.setItem(MAP_VISIBLE_KEY, showMap ? "true" : "false");
-    syncMapToggleLabel();
-    renderMain();
-  });
-
-  toolbar.append(
-    packageSelect,
-    validateBtn,
-    previewBtn,
-    mapToggleBtn,
-    applyBtn,
-    summaryEl,
-    statusEl
-  );
+  toolbar.append(packageSelect, validateBtn, previewBtn, applyBtn, summaryEl, statusEl);
 
   const messages = document.createElement("div");
   messages.className = "design-messages";
@@ -152,7 +114,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       return;
     }
 
-    renderStudio();
+    renderConfiguredState();
   }
 
   function renderBrainstorm() {
@@ -164,16 +126,48 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         workingSchema = updated;
         onSchemaChange(updated);
       },
-      onOpenStudio(updated) {
-        brainstormMode = false;
-        intro.hidden = false;
-        workingSchema = updated;
-        selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
-        startedBlank = true;
-        onSchemaChange(workingSchema);
-        renderMain();
+      onApply: async () => {
+        const applied = await doApply();
+        if (applied) {
+          brainstormMode = false;
+          startedBlank = false;
+          intro.hidden = false;
+          renderMain();
+        }
       },
     });
+  }
+
+  function renderConfiguredState() {
+    intro.hidden = false;
+    const panel = document.createElement("div");
+    panel.className = "design-configured";
+
+    const heading = document.createElement("h3");
+    heading.textContent = "Workspace is set up";
+    panel.appendChild(heading);
+
+    const hint = document.createElement("p");
+    hint.className = "design-help";
+    hint.textContent =
+      "Adjust tabs and fields in Workspace → Customize. Use Start over in the sidebar to run brainstorm again.";
+    panel.appendChild(hint);
+
+    const list = document.createElement("ul");
+    list.className = "design-configured-list";
+    Object.values(workingSchema.entity_types || {}).forEach((ent) => {
+      const li = document.createElement("li");
+      const fields = Object.entries(ent.fields || {})
+        .filter(([k, f]) => k !== "id" && f.type !== "foreign_key")
+        .map(([k, f]) => f.editor?.header || k);
+      li.innerHTML = `<strong>${escapeHtml(ent.label)}</strong> <span class="muted">${escapeHtml(fields.join(", ") || "title")}</span>`;
+      list.appendChild(li);
+    });
+    if (!list.children.length) {
+      list.innerHTML = "<li class='muted'>No record types yet.</li>";
+    }
+    panel.appendChild(list);
+    main.appendChild(panel);
   }
 
   async function doApply() {
@@ -184,14 +178,14 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       if (!validation.valid) {
         showMessages(validation.errors.map((e) => `Error: ${e}`), "error");
         statusEl.textContent = "Fix problems first";
-        return;
+        return false;
       }
       const preview = validation.diff;
       if (preview) {
         const summary = formatDiffPreview(preview);
         if (!confirm(`Apply these changes to your workspace?\n\n${summary}`)) {
           statusEl.textContent = "";
-          return;
+          return false;
         }
       }
       statusEl.textContent = "Applying…";
@@ -200,10 +194,11 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       setSchema(workingSchema);
       showMessages([formatAppliedDiff(result.diff)], "ok");
       statusEl.textContent = "Changes applied";
-      renderMain();
+      return true;
     } catch (err) {
       showMessages([formatErrorLine(err)], "error");
       statusEl.textContent = "Could not apply changes";
+      return false;
     }
   }
 
@@ -212,149 +207,10 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     onPreview();
   }
 
-  function renderStudio() {
-    const split = document.createElement("div");
-    split.className = "design-studio" + (showMap ? " design-studio--map-visible" : "");
-
-    const left = document.createElement("div");
-    left.className = "design-studio-left";
-
-    const tabsPanel = document.createElement("div");
-    tabsPanel.className = "design-studio-tabs";
-
-    const mapPanel = document.createElement("div");
-    mapPanel.className = "design-studio-map";
-    mapPanel.hidden = !showMap;
-
-    const mapHead = document.createElement("div");
-    mapHead.className = "studio-map-head";
-    const mapTitle = document.createElement("strong");
-    mapTitle.textContent = "Map";
-    const mapControls = document.createElement("div");
-    mapControls.className = "studio-map-controls";
-
-    const densitySelect = document.createElement("select");
-    densitySelect.className = "erd-density-select";
-    densitySelect.innerHTML = `
-      <option value="simple">Simple — keys & links</option>
-      <option value="full">Full — all fields</option>
-    `;
-    densitySelect.value = mapDensity;
-    densitySelect.addEventListener("change", () => {
-      mapDensity = densitySelect.value;
-      localStorage.setItem(MAP_DENSITY_KEY, mapDensity);
-      bindMap();
-    });
-
-    const junctionLabel = document.createElement("label");
-    junctionLabel.className = "erd-toggle";
-    const junctionCheck = document.createElement("input");
-    junctionCheck.type = "checkbox";
-    junctionCheck.checked = showJunctionTables;
-    junctionCheck.addEventListener("change", () => {
-      showJunctionTables = junctionCheck.checked;
-      localStorage.setItem(MAP_JUNCTION_KEY, showJunctionTables ? "true" : "false");
-      bindMap();
-    });
-    junctionLabel.append(junctionCheck, document.createTextNode(" Link tables"));
-
-    const resetBtn = document.createElement("button");
-    resetBtn.type = "button";
-    resetBtn.className = "btn btn-sm";
-    resetBtn.textContent = "Reset layout";
-    resetBtn.addEventListener("click", () => mapApi?.resetLayout());
-
-    const hideMapBtn = document.createElement("button");
-    hideMapBtn.type = "button";
-    hideMapBtn.className = "btn btn-sm";
-    hideMapBtn.textContent = "Hide map";
-    hideMapBtn.addEventListener("click", () => {
-      showMap = false;
-      localStorage.setItem(MAP_VISIBLE_KEY, "false");
-      renderMain();
-    });
-
-    mapControls.append(densitySelect, junctionLabel, resetBtn, hideMapBtn);
-    mapHead.append(mapTitle, mapControls);
-
-    const mapMount = document.createElement("div");
-    mapMount.className = "studio-map-mount";
-    mapPanel.append(mapHead, mapMount);
-
-    split.append(left, tabsPanel, mapPanel);
-    main.appendChild(split);
-
-    function selectEntity(id) {
-      if (selectedEntityId === id) {
-        mapApi?.setSelected(id);
-        return;
-      }
-      selectedEntityId = id;
-      refreshEditor();
-      mapApi?.setSelected(id);
-    }
-
-    function onStudioChange(updated, { scope = "all" } = {}) {
-      onSchemaChange(updated);
-      workingSchema = updated;
-      if (!selectedEntityId || !workingSchema.entity_types[selectedEntityId]) {
-        selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
-      }
-      bindMap();
-      if (scope !== "views") refreshEditor();
-      if (scope !== "items") refreshTabs();
-    }
-
-    function onItemsChange(updated) {
-      onStudioChange(updated, { scope: "items" });
-    }
-
-    function onViewsChange(updated) {
-      onStudioChange(updated, { scope: "views" });
-    }
-
-    function refreshEditor() {
-      renderStudioItemEditor({
-        container: left,
-        schema: workingSchema,
-        entityId: selectedEntityId,
-        onSelectEntity: selectEntity,
-        onChange: onItemsChange,
-      });
-    }
-
-    function refreshTabs() {
-      renderStudioWorkspacePanel({
-        container: tabsPanel,
-        schema: workingSchema,
-        onChange: onViewsChange,
-        onSelectEntity: selectEntity,
-        variant: "sidebar",
-      });
-    }
-
-    function bindMap() {
-      if (!showMap) return;
-      mapApi = renderWorkspaceMap({
-        container: mapMount,
-        schema: workingSchema,
-        density: mapDensity,
-        showJunctionTables,
-        selectedEntityId,
-        onSelectEntity: selectEntity,
-        onChange: onStudioChange,
-      });
-    }
-
-    refreshEditor();
-    refreshTabs();
-    bindMap();
-  }
-
   function renderEmptyState() {
     const empty = document.createElement("div");
     empty.className = "design-empty";
-    empty.innerHTML = `<h3>Design this workspace</h3><p class="design-help">This workspace has no Item types yet. Brainstorm what to track, use a template, or open the studio.</p>`;
+    empty.innerHTML = `<h3>Design this workspace</h3><p class="design-help">This workspace has no Item types yet. Brainstorm what to track, or start from a template.</p>`;
     const actions = document.createElement("div");
     actions.className = "design-empty-actions";
     const brainstormBtn = document.createElement("button");
@@ -366,7 +222,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       startedBlank = true;
       brainstormMode = true;
       intro.hidden = true;
-      selectedEntityId = null;
       onSchemaChange(workingSchema);
       renderMain();
     });
@@ -379,7 +234,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         const result = await loadPackage("tagged_knowledge_base");
         workingSchema = result.schema;
         setSchema(workingSchema);
-        selectedEntityId = Object.keys(workingSchema.entity_types)[0] || null;
         startedBlank = false;
         brainstormMode = false;
         statusEl.textContent = "Notes template loaded";
@@ -388,19 +242,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         showMessages([formatErrorLine(err)], "error");
       }
     });
-    const studioBtn = document.createElement("button");
-    studioBtn.type = "button";
-    studioBtn.className = "btn";
-    studioBtn.textContent = "Open studio";
-    studioBtn.addEventListener("click", () => {
-      workingSchema = blankWorkspace(workingSchema);
-      startedBlank = true;
-      brainstormMode = false;
-      selectedEntityId = null;
-      onSchemaChange(workingSchema);
-      renderMain();
-    });
-    actions.append(brainstormBtn, templateBtn, studioBtn);
+    actions.append(brainstormBtn, templateBtn);
     empty.appendChild(actions);
     return empty;
   }
@@ -429,8 +271,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       const result = await loadPackage(id);
       workingSchema = result.schema;
       setSchema(workingSchema);
-      selectedEntityId = Object.keys(workingSchema.entity_types)[0] || null;
       packageSelect.value = "";
+      brainstormMode = false;
+      startedBlank = false;
       statusEl.textContent = "Template loaded";
       renderMain();
     } catch (err) {
@@ -454,7 +297,10 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   });
 
   previewBtn.addEventListener("click", doPreview);
-  applyBtn.addEventListener("click", doApply);
+  applyBtn.addEventListener("click", async () => {
+    const applied = await doApply();
+    if (applied) renderMain();
+  });
 
   function showMessages(lines, kind) {
     messages.hidden = false;
@@ -491,7 +337,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   return {
     reload(schema, { startOver = false, created = false, deleted = false } = {}) {
       workingSchema = structuredClone(schema);
-      selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
       const empty = !Object.keys(workingSchema.entity_types || {}).length;
       if (startOver || created || empty) {
         brainstormMode = true;
@@ -501,10 +346,13 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         brainstormMode = false;
         startedBlank = false;
         intro.hidden = false;
+      } else {
+        brainstormMode = false;
+        startedBlank = false;
+        intro.hidden = false;
       }
       statusEl.textContent = "";
       messages.hidden = true;
-      if (!brainstormMode) intro.hidden = false;
       updateWorkspaceIntro();
       renderMain();
     },

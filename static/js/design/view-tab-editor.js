@@ -55,7 +55,7 @@ export function renderViewJoinsAndColumns(view, schema, onChange) {
   function renderIncludedColumns() {
     colList.innerHTML = "";
     if (!(view.columns || []).length) {
-      colList.innerHTML = "<p class='muted studio-ws-empty'>No columns yet — check fields below.</p>";
+      colList.innerHTML = "<p class='muted ws-tabs-empty'>No columns yet — check fields below.</p>";
       return;
     }
     (view.columns || []).forEach((col) => {
