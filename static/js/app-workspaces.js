@@ -5,7 +5,7 @@ import {
   createWorkspace,
   listWorkspaces,
   startOverWorkspace,
-} from "./schema-client.js";
+} from "./schema-client.js?v=2";
 
 export function mountAppWorkspaceBar({ mount, onChange }) {
   let state = { active_id: null, workspaces: [] };

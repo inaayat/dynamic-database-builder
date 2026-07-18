@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Design</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
@@ -46,7 +48,7 @@
   </main>
 
   <script type="module">
-    import("/static/js/editor.js").catch((err) => {
+    import("/static/js/editor.js?v=2").catch((err) => {
       const status = document.getElementById("load-status");
       if (status) {
         status.textContent = "Failed to load app: " + (err?.message || err);

@@ -10,7 +10,7 @@ import {
 } from "../design/design-actions.js";
 import { renderViewJoinsAndColumns } from "../design/view-tab-editor.js";
 import { isPrimaryKey } from "../design/field-presets.js";
-import { applySchema, patchSchema } from "../schema-client.js";
+import { applySchema, patchSchema } from "../schema-client.js?v=2";
 import { ensureViewShape } from "../view-columns.js";
 
 export function mountCustomizePanel({

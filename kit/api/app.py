@@ -279,7 +279,10 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
         editor_path = STATIC_DIR / "editor.html"
         if not editor_path.is_file():
             raise HTTPException(status_code=404, detail="editor.html not found")
-        return FileResponse(editor_path)
+        return FileResponse(
+            editor_path,
+            headers={"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"},
+        )
 
     app.include_router(register_routes())
 

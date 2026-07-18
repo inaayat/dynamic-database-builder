@@ -3,7 +3,7 @@ import {
   getPackages,
   loadPackage,
   validateSchema,
-} from "../schema-client.js";
+} from "../schema-client.js?v=2";
 import { mountBrainstormFlow } from "./brainstorm-flow.js";
 import { PAGE_INTRO, helpParagraph } from "./help-text.js";
 import { renderStudioItemEditor } from "./item-editor.js";
