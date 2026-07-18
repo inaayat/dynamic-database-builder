@@ -2799,6 +2799,50 @@ button.map-chip:hover,
   margin-bottom: 1rem;
 }
 
+.brainstorm-setup-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.brainstorm-setup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.brainstorm-setup-heading {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.brainstorm-setup-place {
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.brainstorm-setup-place-hint {
+  margin: 0;
+}
+
+.brainstorm-setup-concepts {
+  margin-top: 0.25rem;
+}
+
+.brainstorm-setup-remove {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.brainstorm-setup-section .brainstorm-sort-row {
+  gap: 0.65rem;
+}
+
+.brainstorm-canvas--setup .brainstorm-place-layout {
+  margin-top: 0.25rem;
+}
+
 .brainstorm-chips {
   display: flex;
   flex-wrap: wrap;

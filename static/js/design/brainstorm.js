@@ -9,17 +9,9 @@ import {
 import { slugify } from "./modals.js";
 
 export const STEP_COPY = {
-  dump: {
-    title: "What might you track?",
-    coach: "Jot kinds of records and bits of info. You'll sort them next.",
-  },
-  sort: {
-    title: "Record or detail?",
-    coach: "Records are things you'll have many of. Details live on a record.",
-  },
-  place: {
-    title: "Where does each detail live?",
-    coach: "Drop details onto a record, then pick a format.",
+  setup: {
+    title: "Brainstorm your workspace",
+    coach: "Add concepts, mark each as Record or Detail, then drop details onto records.",
   },
   link: {
     title: "Connect records",
@@ -192,16 +184,10 @@ export function ensureTitleDetailOnRecord(state, itemConceptId) {
 
 export function stepReady(step, state) {
   switch (step) {
-    case "dump":
-      return state.concepts.length > 0;
-    case "sort":
-      return (
-        state.concepts.length > 0 &&
-        itemConcepts(state).length > 0
-      );
-    case "place": {
-      const unplaced = unplacedScalars(state);
-      return unplaced.length === 0;
+    case "setup": {
+      if (!state.concepts.length) return false;
+      if (!itemConcepts(state).length) return false;
+      return unplacedScalars(state).length === 0;
     }
     case "link":
       return true;
@@ -217,6 +203,16 @@ export function stepReady(step, state) {
 export function stepBlockedReason(step, state) {
   if (stepReady(step, state)) return "";
   switch (step) {
+    case "setup":
+      if (!state.concepts.length) return "Add at least one concept to continue";
+      if (!itemConcepts(state).length) return "Mark at least one concept as a Record";
+      {
+        const unplaced = unplacedScalars(state);
+        if (unplaced.length) {
+          return `Place ${unplaced.length} detail${unplaced.length === 1 ? "" : "s"} on a record`;
+        }
+      }
+      return "";
     case "dump":
       return "Add at least one concept to continue";
     case "sort":

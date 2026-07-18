@@ -1,4 +1,4 @@
-/** Brainstorm flow UI — Dump → Sort → Place → Link → Review → Tabs. */
+/** Brainstorm flow UI — Setup → Link → Review → Tabs. */
 
 import {
   addLink,
@@ -29,7 +29,7 @@ import {
 } from "./brainstorm.js";
 import { renderStudioWorkspacePanel } from "./studio-workspace-panel.js";
 
-const STEPS = ["dump", "sort", "place", "link", "review", "tabs"];
+const STEPS = ["setup", "link", "review", "tabs"];
 
 const CARDINALITY_LABELS = {
   many: { label: "Many", hint: "Can pick several" },
@@ -128,9 +128,7 @@ export function mountBrainstormFlow({
     canvas.innerHTML = "";
     canvas.className = "brainstorm-canvas brainstorm-canvas--" + step;
 
-    if (step === "dump") renderDump(canvas);
-    else if (step === "sort") renderSort(canvas);
-    else if (step === "place") renderPlace(canvas);
+    if (step === "setup") renderSetup(canvas);
     else if (step === "link") renderLink(canvas);
     else if (step === "review") renderReview(canvas);
     else if (step === "tabs") renderTabs(canvas);
@@ -143,7 +141,7 @@ export function mountBrainstormFlow({
 
   nextBtn.addEventListener("click", () => {
     if (!stepReady(currentStep(), state)) return;
-    if (currentStep() === "sort") commitSuggestedKinds(state);
+    if (currentStep() === "setup") commitSuggestedKinds(state);
     if (currentStep() === "tabs") {
       syncSchema();
       onOpenStudio?.(workingSchema);
@@ -168,6 +166,137 @@ export function mountBrainstormFlow({
       }
     }
     if (added) render();
+  }
+
+  function renderSetup(root) {
+    const page = document.createElement("div");
+    page.className = "brainstorm-setup-page";
+
+    const conceptsSection = document.createElement("section");
+    conceptsSection.className = "brainstorm-setup-section";
+    const conceptsHead = document.createElement("h3");
+    conceptsHead.className = "brainstorm-setup-heading";
+    conceptsHead.textContent = "What might you track?";
+    conceptsSection.appendChild(conceptsHead);
+
+    if (!state.concepts.length) {
+      const ghosts = document.createElement("div");
+      ghosts.className = "brainstorm-ghosts";
+      GHOST_CHIPS.forEach((label) => {
+        const g = document.createElement("button");
+        g.type = "button";
+        g.className = "brainstorm-chip brainstorm-chip--ghost";
+        g.textContent = label;
+        g.addEventListener("click", () => addConcepts([label]));
+        ghosts.appendChild(g);
+      });
+      conceptsSection.appendChild(ghosts);
+    }
+
+    const list = document.createElement("div");
+    list.className = "brainstorm-sort-list brainstorm-setup-concepts";
+    state.concepts.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "brainstorm-sort-row";
+
+      const label = document.createElement("span");
+      label.className = "brainstorm-sort-label";
+      label.textContent = c.label;
+
+      const toggle = document.createElement("div");
+      toggle.className = "brainstorm-toggle";
+      toggle.setAttribute("role", "group");
+      const kind = effectiveKind(c);
+      ["item", "scalar"].forEach((k) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className =
+          "brainstorm-toggle-btn" + (kind === k ? " brainstorm-toggle-btn--active" : "");
+        btn.textContent = k === "item" ? "Record" : "Detail";
+        btn.title = k === "item" ? "You'll have many of these" : "Lives on a record";
+        btn.addEventListener("click", () => {
+          if (k === "item" && c.kind === "scalar") promoteToItem(state, c.id);
+          else if (k === "scalar" && c.kind === "item") {
+            const warnings = demoteToScalar(state, c.id);
+            if (warnings.length && !confirm(warnings.join("\n"))) return;
+          }
+          c.kind = k;
+          render();
+        });
+        toggle.appendChild(btn);
+      });
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "brainstorm-chip-remove brainstorm-setup-remove";
+      remove.setAttribute("aria-label", "Remove");
+      remove.textContent = "×";
+      remove.addEventListener("click", () => {
+        state.concepts = state.concepts.filter((x) => x.id !== c.id);
+        state.placements = state.placements.filter((p) => p.conceptId !== c.id);
+        state.links = (state.links || []).filter(
+          (l) => l.fromConceptId !== c.id && l.toConceptId !== c.id
+        );
+        render();
+      });
+
+      row.append(label, toggle, remove);
+      list.appendChild(row);
+    });
+    conceptsSection.appendChild(list);
+
+    const inputRow = document.createElement("div");
+    inputRow.className = "brainstorm-input-row";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "brainstorm-input";
+    input.placeholder = "Add another…";
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === ",") {
+        e.preventDefault();
+        const labels = parseChipInput(input.value);
+        if (labels.length) {
+          addConcepts(labels);
+          input.value = "";
+        }
+      }
+    });
+    input.addEventListener("paste", (e) => {
+      const text = e.clipboardData?.getData("text") || "";
+      if (text.includes("\n") || text.includes(",")) {
+        e.preventDefault();
+        addConcepts(parseChipInput(text));
+      }
+    });
+    inputRow.appendChild(input);
+    conceptsSection.appendChild(inputRow);
+
+    const hints = document.createElement("div");
+    hints.className = "brainstorm-sort-hints muted";
+    hints.innerHTML =
+      "<span>Records: Movie, Theater, Tag…</span><span>Details: title, date, rating…</span>";
+    conceptsSection.appendChild(hints);
+
+    page.appendChild(conceptsSection);
+
+    const placeSection = document.createElement("section");
+    placeSection.className = "brainstorm-setup-section brainstorm-setup-place";
+    const placeHead = document.createElement("h3");
+    placeHead.className = "brainstorm-setup-heading";
+    placeHead.textContent = "Where does each detail live?";
+    placeSection.appendChild(placeHead);
+
+    if (!itemConcepts(state).length) {
+      placeSection.appendChild(
+        el("p", "muted brainstorm-setup-place-hint", "Mark at least one concept as a Record above.")
+      );
+    } else {
+      renderPlace(placeSection);
+    }
+
+    page.appendChild(placeSection);
+    root.appendChild(page);
+    if (!state.concepts.length) setTimeout(() => input.focus(), 0);
   }
 
   function renderDump(root) {
