@@ -12,7 +12,7 @@ export const STEP_COPY = {
   setup: {
     title: "Build your workspace",
     coach:
-      "Add concepts at the top, mark each as Record or Detail, then add values on each record card — fields or other records.",
+      "Add concepts at the top, mark each as Record or Detail, then add values on each record card. The same detail can go on multiple records.",
   },
   review: {
     title: "Does this look right?",
@@ -150,6 +150,21 @@ export function unplacedScalars(state) {
   return scalarConcepts(state).filter((c) => !placed.has(c.id));
 }
 
+export function scalarOnRecord(state, conceptId, entityId) {
+  return state.placements.some(
+    (p) =>
+      isScalarPlacement(p) && p.conceptId === conceptId && p.entityId === entityId
+  );
+}
+
+export function scalarsAvailableForRecord(state, entityId) {
+  return scalarConcepts(state).filter((c) => !scalarOnRecord(state, c.id, entityId));
+}
+
+export function scalarHasOpenSlots(state, conceptId) {
+  return itemConcepts(state).some((item) => !scalarOnRecord(state, conceptId, item.id));
+}
+
 export function scalarsOnRecord(state, itemConceptId) {
   return state.placements
     .filter((p) => isScalarPlacement(p) && p.entityId === itemConceptId)
@@ -252,7 +267,7 @@ export function promoteToItem(state, conceptId) {
 }
 
 export function placeScalar(state, conceptId, entityId, fieldType) {
-  state.placements = state.placements.filter((p) => p.conceptId !== conceptId);
+  if (scalarOnRecord(state, conceptId, entityId)) return { error: "Already on this record." };
   state.placements.push({
     conceptId,
     entityId,
@@ -262,11 +277,17 @@ export function placeScalar(state, conceptId, entityId, fieldType) {
         state.concepts.find((c) => c.id === conceptId)?.label || ""
       ),
   });
+  return { ok: true };
 }
 
-export function unplaceScalar(state, conceptId) {
+export function unplaceScalar(state, conceptId, entityId) {
   state.placements = state.placements.filter(
-    (p) => !(p.conceptId === conceptId && isScalarPlacement(p))
+    (p) =>
+      !(
+        p.conceptId === conceptId &&
+        p.entityId === entityId &&
+        isScalarPlacement(p)
+      )
   );
 }
 

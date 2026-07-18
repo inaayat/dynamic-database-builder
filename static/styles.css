@@ -2316,6 +2316,12 @@ main {
   color: var(--muted);
 }
 
+.brainstorm-tray-hint {
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
 .brainstorm-detail-pill {
   display: block;
   padding: 0.35rem 0.55rem;

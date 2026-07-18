@@ -20,6 +20,8 @@ import {
   recordsOnRecord,
   removeConcept,
   removeRecordLink,
+  scalarHasOpenSlots,
+  scalarsAvailableForRecord,
   scalarsOnRecord,
   stepBlockedReason,
   stepReady,
@@ -196,7 +198,8 @@ export function mountBrainstormFlow({
       const conceptId = payload.slice(7);
       const concept = state.concepts.find((c) => c.id === conceptId);
       if (concept) {
-        placeScalar(state, conceptId, itemId, suggestFieldType(concept.label));
+        const res = placeScalar(state, conceptId, itemId, suggestFieldType(concept.label));
+        if (res.error) return;
         render();
       }
       return;
@@ -254,10 +257,10 @@ export function mountBrainstormFlow({
       render();
     });
 
-    if (kind === "scalar" && unplacedScalars(state).some((c) => c.id === concept.id)) {
+    if (kind === "scalar" && scalarHasOpenSlots(state, concept.id)) {
       row.classList.add("brainstorm-concept-row--draggable");
       bindDragPayload(row, `scalar:${concept.id}`);
-      row.title = "Drag onto a record below";
+      row.title = "Drag onto a record below (can be on multiple records)";
     }
 
     if (kind === "item") {
@@ -313,7 +316,7 @@ export function mountBrainstormFlow({
     const hints = document.createElement("p");
     hints.className = "brainstorm-setup-hint muted";
     hints.textContent =
-      "Records are things you track many of (Teacher, Class). Details are plain values (bio, due date). Add another record as a value to connect them.";
+      "Records are things you track many of (Teacher, Class). Details are plain values (bio, due date) — add the same detail to as many records as you need.";
     page.appendChild(hints);
 
     const placeSection = document.createElement("section");
@@ -352,6 +355,12 @@ export function mountBrainstormFlow({
     const trayHead = document.createElement("h3");
     trayHead.textContent = "Unplaced details";
     tray.appendChild(trayHead);
+
+    const trayHint = document.createElement("p");
+    trayHint.className = "muted brainstorm-tray-hint";
+    trayHint.textContent =
+      "Place each detail on at least one record. Use Add value to reuse it on other records.";
+    tray.appendChild(trayHint);
 
     if (!unplaced.length) {
       tray.appendChild(el("p", "muted", "All details placed."));
@@ -454,7 +463,7 @@ export function mountBrainstormFlow({
     remove.setAttribute("aria-label", "Remove");
     remove.textContent = "×";
     remove.addEventListener("click", () => {
-      unplaceScalar(state, concept.id);
+      unplaceScalar(state, concept.id, entityId);
       render();
     });
 
@@ -522,11 +531,12 @@ export function mountBrainstormFlow({
   }
 
   function showAddValueMenu(entityId, anchor) {
-    const detailItems = unplacedScalars(state).map((concept) => ({
+    const detailItems = scalarsAvailableForRecord(state, entityId).map((concept) => ({
       label: concept.label,
       onPick: () => {
-        placeScalar(state, concept.id, entityId, suggestFieldType(concept.label));
-        render();
+        const res = placeScalar(state, concept.id, entityId, suggestFieldType(concept.label));
+        if (res.error) alert(res.error);
+        else render();
       },
     }));
     const recordItems = availableRecordLinks(state, entityId).map((concept) => ({
@@ -542,7 +552,7 @@ export function mountBrainstormFlow({
     if (detailItems.length) sections.push({ title: "Details", items: detailItems });
     if (recordItems.length) sections.push({ title: "Records", items: recordItems });
     if (!sections.length) {
-      alert("Add more concepts above, or place all details first.");
+      alert("No more values to add here. Add concepts above or reuse details on other records.");
       return;
     }
     showSectionedMenu(anchor, sections);
