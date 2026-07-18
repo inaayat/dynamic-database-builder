@@ -1,6 +1,7 @@
 /** Brainstorm flow UI — Build → Review → Tabs. */
 
 import {
+  addDetailOnRecord,
   availableRecordLinks,
   CARDINALITY_LABELS,
   commitSuggestedKinds,
@@ -418,6 +419,8 @@ export function mountBrainstormFlow({
         fields.appendChild(renderRecordValueRow(item.id, placement, concept));
       });
 
+      fields.appendChild(renderCardAddDetail(item.id));
+
       const addBtn = document.createElement("button");
       addBtn.type = "button";
       addBtn.className = "btn btn-sm brainstorm-add-value";
@@ -469,6 +472,57 @@ export function mountBrainstormFlow({
 
     field.append(name, fmt, remove);
     return field;
+  }
+
+  function renderCardAddDetail(entityId) {
+    const row = document.createElement("div");
+    row.className = "brainstorm-card-add-detail";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "brainstorm-input brainstorm-card-add-input";
+    input.placeholder = "Add detail…";
+    input.autocomplete = "off";
+
+    const commit = () => {
+      const labels = parseChipInput(input.value);
+      if (!labels.length) return;
+      const errors = [];
+      for (const label of labels) {
+        const res = addDetailOnRecord(state, label, entityId);
+        if (res.error) errors.push(res.error);
+      }
+      if (errors.length === labels.length) {
+        alert(errors[0]);
+        return;
+      }
+      input.value = "";
+      render();
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === ",") {
+        e.preventDefault();
+        commit();
+      }
+    });
+    input.addEventListener("paste", (e) => {
+      const text = e.clipboardData?.getData("text") || "";
+      if (text.includes("\n") || text.includes(",")) {
+        e.preventDefault();
+        const labels = parseChipInput(text);
+        const errors = [];
+        for (const label of labels) {
+          const res = addDetailOnRecord(state, label, entityId);
+          if (res.error) errors.push(res.error);
+        }
+        if (errors.length && errors.length === labels.length) alert(errors[0]);
+        else render();
+      }
+    });
+
+    row.appendChild(input);
+    return row;
   }
 
   function renderRecordValueRow(entityId, placement, concept) {
@@ -551,11 +605,70 @@ export function mountBrainstormFlow({
     const sections = [];
     if (detailItems.length) sections.push({ title: "Details", items: detailItems });
     if (recordItems.length) sections.push({ title: "Records", items: recordItems });
-    if (!sections.length) {
-      alert("No more values to add here. Add concepts above or reuse details on other records.");
-      return;
-    }
+    sections.push({
+      title: "New",
+      items: [
+        {
+          label: "Create detail…",
+          onPick: () => showInlineDetailPrompt(entityId, anchor),
+        },
+      ],
+    });
     showSectionedMenu(anchor, sections);
+  }
+
+  function showInlineDetailPrompt(entityId, anchor) {
+    document.querySelectorAll(".brainstorm-value-menu").forEach((m) => m.remove());
+    const menu = document.createElement("div");
+    menu.className = "brainstorm-value-menu brainstorm-value-menu--create";
+
+    const head = document.createElement("p");
+    head.className = "brainstorm-value-menu-head muted";
+    head.textContent = "New detail";
+    menu.appendChild(head);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "brainstorm-input brainstorm-value-menu-input";
+    input.placeholder = "Detail name…";
+    input.autocomplete = "off";
+    menu.appendChild(input);
+
+    const actions = document.createElement("div");
+    actions.className = "brainstorm-value-menu-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn btn-sm";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => menu.remove());
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn btn-sm btn-primary";
+    add.textContent = "Add";
+    const commit = () => {
+      const res = addDetailOnRecord(state, input.value, entityId);
+      if (res.error) alert(res.error);
+      else {
+        menu.remove();
+        render();
+      }
+    };
+    add.addEventListener("click", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit();
+      }
+    });
+    actions.append(cancel, add);
+    menu.appendChild(actions);
+
+    const rect = anchor.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    menu.style.top = `${rect.bottom - canvasRect.top + 4}px`;
+    menu.style.left = `${Math.max(0, rect.left - canvasRect.left)}px`;
+    canvas.appendChild(menu);
+    setTimeout(() => input.focus(), 0);
   }
 
   function showPickerMenu(title, items) {

@@ -266,6 +266,39 @@ export function promoteToItem(state, conceptId) {
   state.placements = state.placements.filter((p) => p.conceptId !== conceptId);
 }
 
+export function findConceptByLabel(state, label) {
+  const lower = label.trim().toLowerCase();
+  if (!lower) return null;
+  return state.concepts.find((c) => c.label.toLowerCase() === lower) || null;
+}
+
+export function addDetailOnRecord(state, label, entityId, fieldType) {
+  const trimmed = label.trim();
+  if (!trimmed) return { error: "Enter a detail name." };
+
+  let concept = findConceptByLabel(state, trimmed);
+  if (concept) {
+    if (effectiveKind(concept) === "item") {
+      return {
+        error: `"${concept.label}" is a Record. Use Add value to link records.`,
+      };
+    }
+    concept.kind = "scalar";
+  } else {
+    concept = createConcept(trimmed);
+    if (!concept) return { error: "Invalid name." };
+    concept.kind = "scalar";
+    state.concepts.push(concept);
+  }
+
+  return placeScalar(
+    state,
+    concept.id,
+    entityId,
+    fieldType || suggestFieldType(trimmed)
+  );
+}
+
 export function placeScalar(state, conceptId, entityId, fieldType) {
   if (scalarOnRecord(state, conceptId, entityId)) return { error: "Already on this record." };
   state.placements.push({

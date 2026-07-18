@@ -2405,6 +2405,34 @@ main {
   margin-top: 0.15rem;
 }
 
+.brainstorm-card-add-detail {
+  margin-top: 0.15rem;
+}
+
+.brainstorm-card-add-input {
+  width: 100%;
+  max-width: none;
+  font-size: var(--fs-sm);
+  padding: 0.4rem 0.55rem;
+}
+
+.brainstorm-value-menu-input {
+  width: 100%;
+  max-width: none;
+  margin-bottom: 0.45rem;
+  font-size: var(--fs-sm);
+}
+
+.brainstorm-value-menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.brainstorm-value-menu--create {
+  min-width: 12rem;
+}
+
 .brainstorm-value-menu {
   position: absolute;
   z-index: 20;
