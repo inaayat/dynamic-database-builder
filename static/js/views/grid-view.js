@@ -163,7 +163,11 @@ export async function renderGridView({
       tbody.appendChild(tr);
     });
     tableEl.appendChild(tbody);
-    container.appendChild(tableEl);
+
+    const scrollWrap = document.createElement("div");
+    scrollWrap.className = "data-grid-scroll";
+    scrollWrap.appendChild(tableEl);
+    container.appendChild(scrollWrap);
   } catch (err) {
     container.innerHTML = `<p class="status error">Failed to load: ${err.message}</p>`;
   }

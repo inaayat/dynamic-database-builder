@@ -8,26 +8,25 @@
   <title>Design</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
+<body data-density="compact">
   <div class="app-shell">
     <aside id="app-workspace-sidebar" class="app-workspace-sidebar-mount" aria-label="Workspaces"></aside>
 
     <div class="app-shell-main">
-      <header>
+      <header class="app-topbar">
         <div class="header-primary">
-          <h1 id="site-title">Loading…</h1>
+          <h1 id="site-title" title="">Loading…</h1>
         </div>
+        <nav class="tabs header-tabs" role="tablist" aria-label="Editor mode">
+          <button class="tab active" role="tab" data-mode="design" aria-selected="true">Design</button>
+          <button class="tab" role="tab" data-mode="edit" aria-selected="false">Workspace</button>
+        </nav>
         <div class="header-actions">
-          <span class="site-meta" id="site-meta"></span>
+          <span class="site-meta visually-hidden" id="site-meta"></span>
           <div id="auth-user" class="auth-user-mount"></div>
           <div id="export-bar" class="export-bar"></div>
         </div>
       </header>
-
-      <nav class="tabs" role="tablist">
-        <button class="tab active" role="tab" data-mode="design" aria-selected="true">Design</button>
-        <button class="tab" role="tab" data-mode="edit" aria-selected="false">Workspace</button>
-      </nav>
 
       <main>
         <section id="panel-design" class="panel active" data-mode="design" role="tabpanel">
@@ -70,7 +69,7 @@
         onSignedOut: () => window.location.reload(),
       });
       if (status) status.textContent = "Loading schema…";
-      import("/static/js/editor.js?v=10").catch((err) => {
+      import("/static/js/editor.js?v=11").catch((err) => {
         if (status) {
           status.textContent = "Failed to load app: " + (err?.message || err);
           status.classList.add("error");

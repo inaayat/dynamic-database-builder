@@ -50,11 +50,14 @@ function getActiveWorkspaceId() {
 function updateHeaderMeta() {
   if (!schema) return;
   document.title = schema.site.title + " — Design";
-  document.getElementById("site-title").textContent = schema.site.title;
+  const titleEl = document.getElementById("site-title");
   const db = schema.storage?.local_db || "data.db";
   const dbName = db.split("/").pop();
-  document.getElementById("site-meta").textContent =
-    `${schema.site.id} · schema ${schema.schema_version} · ${dbName}`;
+  const meta = `${schema.site.id} · schema ${schema.schema_version} · ${dbName}`;
+  titleEl.textContent = schema.site.title;
+  titleEl.title = meta;
+  const metaEl = document.getElementById("site-meta");
+  if (metaEl) metaEl.textContent = meta;
 }
 
 async function initWorkspacePicker() {
