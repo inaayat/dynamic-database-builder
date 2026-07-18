@@ -11,7 +11,7 @@ import { slugify } from "./modals.js";
 export const STEP_COPY = {
   setup: {
     title: "Brainstorm your workspace",
-    coach: "Add concepts, mark each as Record or Detail, then drop details onto records.",
+    coach: "Add fields at the top, mark Record or Detail on each chip, then drag details onto records below.",
   },
   link: {
     title: "Connect records",

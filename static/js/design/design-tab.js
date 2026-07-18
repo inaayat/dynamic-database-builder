@@ -142,12 +142,12 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     updateSummary();
     main.innerHTML = "";
     const entityCount = Object.keys(workingSchema.entity_types || {}).length;
-    if (!entityCount && !startedBlank) {
+    if (!entityCount && !startedBlank && !brainstormMode) {
       main.appendChild(renderEmptyState());
       return;
     }
 
-    if (brainstormMode) {
+    if (brainstormMode || (!entityCount && startedBlank)) {
       renderBrainstorm();
       return;
     }
@@ -365,6 +365,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       workingSchema = blankWorkspace(workingSchema);
       startedBlank = true;
       brainstormMode = true;
+      intro.hidden = true;
       selectedEntityId = null;
       onSchemaChange(workingSchema);
       renderMain();
@@ -493,12 +494,13 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
       const empty = !Object.keys(workingSchema.entity_types || {}).length;
       if (startOver || created || empty) {
-        brainstormMode = false;
-        startedBlank = empty;
+        brainstormMode = true;
+        startedBlank = true;
+        intro.hidden = true;
       }
       statusEl.textContent = "";
       messages.hidden = true;
-      intro.hidden = false;
+      if (!brainstormMode) intro.hidden = false;
       updateWorkspaceIntro();
       renderMain();
     },
