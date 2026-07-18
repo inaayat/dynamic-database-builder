@@ -178,7 +178,7 @@ export function availableRecordLinks(state, entityId) {
 }
 
 export function recordIdentityLabel(itemConcept) {
-  return itemConcept?.label ? `${itemConcept.label} name` : "Name";
+  return itemConcept?.label || "Name";
 }
 
 export function stepReady(step, state) {
