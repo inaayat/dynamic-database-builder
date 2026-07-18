@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from kit.schema.model import SitePackage, ViewColumn
 
-DEFAULT_PACKAGE = "tagged_knowledge_base"
+DEFAULT_PACKAGE = "blank"
 DEFAULTS_DIR = Path(__file__).resolve().parent / "defaults"
 
 
@@ -145,9 +145,17 @@ class SchemaLoader:
                 ws_id = data.get("site", {}).get("id", "active")
                 return self.load_from_data(data, source=f"workspace:{ws_id}")
 
-        data = self._read_json(self.package_path())
+        from kit.schema.workspaces import blank_schema
+
+        ws_id = store.get_active_id()
+        entry = next(
+            (w for w in store.list_workspaces() if w["id"] == ws_id),
+            {"title": "Workspace"},
+        )
+        title = entry.get("title") or ws_id
+        data = blank_schema(ws_id, title, store._db_relpath(ws_id))
         self._write_active(data)
-        return self.load_from_data(data, source="default")
+        return self.load_from_data(data, source="blank")
 
     def reload(self) -> SitePackage:
         self._package = None

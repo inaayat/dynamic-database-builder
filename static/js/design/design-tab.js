@@ -1,7 +1,5 @@
 import {
   applySchema,
-  getPackages,
-  loadPackage,
   validateSchema,
 } from "../schema-client.js?v=2";
 import { mountBrainstormFlow } from "./brainstorm-flow.js";
@@ -37,10 +35,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   const toolbar = document.createElement("div");
   toolbar.className = "design-toolbar";
 
-  const packageSelect = document.createElement("select");
-  packageSelect.className = "design-package-select";
-  packageSelect.innerHTML = "<option value=''>Start from a template…</option>";
-
   const summaryEl = document.createElement("span");
   summaryEl.className = "design-summary muted";
 
@@ -62,7 +56,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   applyBtn.className = "btn btn-primary";
   applyBtn.textContent = "Apply Changes";
 
-  toolbar.append(packageSelect, validateBtn, previewBtn, applyBtn, summaryEl, statusEl);
+  toolbar.append(validateBtn, previewBtn, applyBtn, summaryEl, statusEl);
 
   const messages = document.createElement("div");
   messages.className = "design-messages";
@@ -210,7 +204,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   function renderEmptyState() {
     const empty = document.createElement("div");
     empty.className = "design-empty";
-    empty.innerHTML = `<h3>Design this workspace</h3><p class="design-help">This workspace has no Item types yet. Brainstorm what to track, or start from a template.</p>`;
+    empty.innerHTML = `<h3>Design this workspace</h3><p class="design-help">This workspace has no Item types yet. Brainstorm what to track to get started.</p>`;
     const actions = document.createElement("div");
     actions.className = "design-empty-actions";
     const brainstormBtn = document.createElement("button");
@@ -225,62 +219,10 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       onSchemaChange(workingSchema);
       renderMain();
     });
-    const templateBtn = document.createElement("button");
-    templateBtn.type = "button";
-    templateBtn.className = "btn";
-    templateBtn.textContent = "Use a template";
-    templateBtn.addEventListener("click", async () => {
-      try {
-        const result = await loadPackage("tagged_knowledge_base");
-        workingSchema = result.schema;
-        setSchema(workingSchema);
-        startedBlank = false;
-        brainstormMode = false;
-        statusEl.textContent = "Notes template loaded";
-        renderMain();
-      } catch (err) {
-        showMessages([formatErrorLine(err)], "error");
-      }
-    });
-    actions.append(brainstormBtn, templateBtn);
+    actions.append(brainstormBtn);
     empty.appendChild(actions);
     return empty;
   }
-
-  async function loadPackages() {
-    try {
-      const { packages } = await getPackages();
-      packageSelect.innerHTML =
-        "<option value=''>Start from a template…</option>" +
-        packages
-          .map((p) => `<option value="${p}">${p.replace(/_/g, " ")}</option>`)
-          .join("");
-    } catch {
-      /* ignore */
-    }
-  }
-
-  packageSelect.addEventListener("change", async () => {
-    const id = packageSelect.value;
-    if (!id) return;
-    if (!confirm(`Load template “${id.replace(/_/g, " ")}”? This replaces your Design setup.`)) {
-      packageSelect.value = "";
-      return;
-    }
-    try {
-      const result = await loadPackage(id);
-      workingSchema = result.schema;
-      setSchema(workingSchema);
-      packageSelect.value = "";
-      brainstormMode = false;
-      startedBlank = false;
-      statusEl.textContent = "Template loaded";
-      renderMain();
-    } catch (err) {
-      showMessages([formatErrorLine(err)], "error");
-      packageSelect.value = "";
-    }
-  });
 
   validateBtn.addEventListener("click", async () => {
     try {
@@ -330,7 +272,6 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     return `Applied: ${tables} table(s), ${cols} field(s). Live in Workspace.`;
   }
 
-  loadPackages();
   updateWorkspaceIntro();
   renderMain();
 

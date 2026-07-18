@@ -364,10 +364,7 @@ class WorkspaceStore:
                 conn.commit()
         trimmed = title.strip() or "Workspace"
         ws_id = self._unique_id(_slugify(trimmed))
-        if template == "blank":
-            schema = blank_schema(ws_id, trimmed, self._db_relpath(ws_id))
-        else:
-            schema = self.schema_from_template(template, ws_id, trimmed)
+        schema = blank_schema(ws_id, trimmed, self._db_relpath(ws_id))
         entry = self._materialize_workspace(ws_id, trimmed, schema, set_active=set_active)
         return {"workspace": entry, "schema": schema}
 

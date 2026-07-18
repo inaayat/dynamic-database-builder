@@ -36,40 +36,6 @@ function mountCreateForm({ onSubmit, onCancel }) {
   nameInput.autocomplete = "off";
   nameLabel.append(nameInput);
 
-  const templateLabel = document.createElement("span");
-  templateLabel.className = "app-workspace-create-label";
-  templateLabel.textContent = "Start from";
-
-  const templateField = document.createElement("div");
-  templateField.className = "app-workspace-create-templates";
-  templateField.setAttribute("role", "radiogroup");
-  templateField.setAttribute("aria-label", "Workspace template");
-
-  const templates = [
-    { id: "blank", label: "Blank workspace", hint: "Brainstorm from scratch" },
-    { id: "tagged_knowledge_base", label: "Notes template", hint: "Pre-built notes KB" },
-  ];
-
-  templates.forEach((tpl, i) => {
-    const opt = document.createElement("label");
-    opt.className = "app-workspace-create-template";
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = "workspace-template";
-    radio.value = tpl.id;
-    radio.checked = i === 0;
-    const copy = document.createElement("span");
-    copy.className = "app-workspace-create-template-copy";
-    const strong = document.createElement("strong");
-    strong.textContent = tpl.label;
-    const hint = document.createElement("small");
-    hint.className = "muted";
-    hint.textContent = tpl.hint;
-    copy.append(strong, hint);
-    opt.append(radio, copy);
-    templateField.appendChild(opt);
-  });
-
   const errorEl = document.createElement("p");
   errorEl.className = "app-workspace-create-error muted";
   errorEl.hidden = true;
@@ -86,20 +52,13 @@ function mountCreateForm({ onSubmit, onCancel }) {
   createBtn.textContent = "Create";
   actions.append(cancelBtn, createBtn);
 
-  panel.append(title, nameLabel, templateLabel, templateField, errorEl, actions);
-
-  function selectedTemplate() {
-    const checked = templateField.querySelector('input[name="workspace-template"]:checked');
-    return checked?.value || "blank";
-  }
+  panel.append(title, nameLabel, errorEl, actions);
 
   function show() {
     panel.hidden = false;
     errorEl.hidden = true;
     errorEl.textContent = "";
     nameInput.value = "";
-    const firstRadio = templateField.querySelector('input[value="blank"]');
-    if (firstRadio) firstRadio.checked = true;
     setTimeout(() => nameInput.focus(), 0);
   }
 
@@ -113,9 +72,6 @@ function mountCreateForm({ onSubmit, onCancel }) {
     createBtn.disabled = busy;
     cancelBtn.disabled = busy;
     nameInput.disabled = busy;
-    templateField.querySelectorAll("input").forEach((el) => {
-      el.disabled = busy;
-    });
   }
 
   function showError(message) {
@@ -132,7 +88,7 @@ function mountCreateForm({ onSubmit, onCancel }) {
     }
     setBusy(true);
     try {
-      await onSubmit({ title, template: selectedTemplate() });
+      await onSubmit({ title });
       hide();
     } catch (err) {
       showError(err.message || "Could not create workspace.");
@@ -189,8 +145,8 @@ function mountBar({ mount, onChange }) {
   row.append(label, select, newBtn, startOverBtn);
 
   const createForm = mountCreateForm({
-    onSubmit: async ({ title, template }) => {
-      const data = await createWorkspace({ title, template });
+    onSubmit: async ({ title }) => {
+      const data = await createWorkspace({ title, template: "blank" });
       state.active_id = data.workspace?.id || data.active_id;
       await refresh(state, renderSelect);
       onChange?.(data, { created: true });
@@ -251,8 +207,8 @@ function mountSidebar({ mount, onChange }) {
   list.setAttribute("aria-label", "Workspaces");
 
   const createForm = mountCreateForm({
-    onSubmit: async ({ title, template }) => {
-      const data = await createWorkspace({ title, template });
+    onSubmit: async ({ title }) => {
+      const data = await createWorkspace({ title, template: "blank" });
       state.active_id = data.workspace?.id || data.active_id;
       await refresh(state, renderList);
       onChange?.(data, { created: true });
