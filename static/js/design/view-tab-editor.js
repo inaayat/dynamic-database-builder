@@ -162,7 +162,9 @@ function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded) 
       onChange();
     });
   } else {
-    COLUMN_MODE_OPTIONS.forEach((optDef) => {
+    // Primary columns: edit or view only (chips are join/junction).
+    const primaryModes = COLUMN_MODE_OPTIONS.filter((o) => o.value !== "chip");
+    primaryModes.forEach((optDef) => {
       const opt = document.createElement("option");
       opt.value = optDef.value;
       opt.textContent = optDef.label;

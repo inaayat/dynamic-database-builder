@@ -238,6 +238,9 @@ class SchemaLoader:
                     )
                     for field in view.columns_from_fields
                 ]
+                # Persist migration onto the view model when loading.
+                view.columns = columns
+                view.columns_from_fields = None
 
             entity_fields = package.get_entity(view.entity).fields
             for col in columns:
@@ -247,6 +250,11 @@ class SchemaLoader:
                     elif col.field not in entity_fields:
                         errors.append(
                             f"View {view.id!r}: unknown primary field {col.field!r}"
+                        )
+                    if col.mode == "chip":
+                        errors.append(
+                            f"View {view.id!r}: chip mode is only valid on join columns "
+                            f"({col.id!r})"
                         )
                 elif col.source == "join":
                     if not col.relationship_id:
@@ -264,6 +272,14 @@ class SchemaLoader:
                             f"View {view.id!r}: chip column requires junction "
                             f"relationship {col.relationship_id!r}"
                         )
+                    if rel and col.field:
+                        other_id = rel.to if rel.from_ == view.entity else rel.from_
+                        other = package.entity_types.get(other_id)
+                        if other and col.field not in other.fields:
+                            errors.append(
+                                f"View {view.id!r}: join column field {col.field!r} "
+                                f"not on entity {other_id!r}"
+                            )
                 else:
                     errors.append(
                         f"View {view.id!r}: column {col.id!r} has invalid source {col.source!r}"

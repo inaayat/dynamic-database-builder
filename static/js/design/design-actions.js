@@ -9,6 +9,7 @@ import {
 } from "./field-presets.js";
 import {
   addPrimaryColumn,
+  attachJoinToView,
   ensureViewShape,
   syncViewColumnsFromEntity,
 } from "../view-columns.js";
@@ -223,7 +224,10 @@ export function convertFieldToLink(schema, entityId, fieldName, opts) {
         design_only: true,
       };
     }
-    return { kind: "link", field: markerName, targetId };
+    (schema.views || [])
+      .filter((v) => v.entity === entityId)
+      .forEach((view) => attachJoinToView(view, schema, existingRel.id));
+    return { kind: "link", field: markerName, targetId, relationshipId: existingRel.id };
   }
 
   return addLinkToEntity(schema, entityId, {
@@ -324,6 +328,11 @@ export function addLinkToEntity(schema, entityId, opts) {
       design_only: true,
     };
   }
+
+  // Wire the link onto matching grid tabs so chips/columns appear without a second step.
+  (schema.views || [])
+    .filter((v) => v.entity === entityId)
+    .forEach((view) => attachJoinToView(view, schema, rel.id));
 
   return { kind: "link", targetId: to, relationshipId: rel.id };
 }

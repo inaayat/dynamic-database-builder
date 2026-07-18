@@ -247,38 +247,76 @@ function renderJoinFieldCell({
   const linkedListContainer = linkedView?.container_entity ? notebookId : null;
   const linkContainer = junctionContainerId(schema, col.relationship_id, notebookId, view);
   const displayField = displayFieldForEntity(linkedEntity);
+  const fieldName = col.field || displayField;
+  const fdef = linkedEntity.fields?.[fieldName] || {};
 
   if (col.mode === "view") {
-    if (col.field === displayField) {
+    if (fieldName === displayField) {
       wrap.textContent = (linkData.names || []).join(", ") || "—";
+    } else if (linkData.ids?.length === 1) {
+      wrap.textContent = "…";
+      fetch(entityRowUrl(linkedId, linkData.ids[0], linkedListContainer))
+        .then((res) => (res.ok ? res.json() : null))
+        .then((linkedRow) => {
+          wrap.textContent = linkedRow?.[fieldName] ?? "—";
+        })
+        .catch(() => {
+          wrap.textContent = "—";
+        });
     } else {
-      wrap.textContent = "—";
+      wrap.textContent = linkData.ids?.length ? `(${linkData.ids.length})` : "—";
     }
     return wrap;
   }
 
-  if (linkData.ids?.length === 1 && col.field === displayField) {
+  if (linkData.ids?.length === 1) {
     const input = document.createElement("input");
     input.type = "text";
     input.className = "cell-input";
-    input.value = linkData.names[0] || "";
+    input.placeholder = fdef.editor?.header || fieldName;
+    input.value = fieldName === displayField ? linkData.names[0] || "" : "";
+    input.disabled = fieldName !== displayField;
+
+    if (fieldName !== displayField) {
+      fetch(entityRowUrl(linkedId, linkData.ids[0], linkedListContainer))
+        .then((res) => (res.ok ? res.json() : null))
+        .then((linkedRow) => {
+          input.value = linkedRow?.[fieldName] ?? "";
+          input.disabled = false;
+        })
+        .catch(() => {
+          input.disabled = false;
+        });
+    }
+
     input.addEventListener("blur", async () => {
-      if (input.value === (linkData.names[0] || "")) return;
+      const previous =
+        fieldName === displayField ? linkData.names[0] || "" : input.dataset.loaded;
+      if (previous !== undefined && input.value === previous) return;
       await fetch(entityRowUrl(linkedId, linkData.ids[0], linkedListContainer), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [col.field]: input.value }),
+        body: JSON.stringify({ [fieldName]: input.value }),
       });
+      if (fieldName === displayField) onRefresh();
+    });
+    input.addEventListener("focus", () => {
+      input.dataset.loaded = input.value;
     });
     wrap.appendChild(input);
     return wrap;
   }
 
-  if (linkData.ids?.length > 1 && col.field === displayField) {
+  if (linkData.ids?.length > 1 && fieldName === displayField) {
     const names = document.createElement("span");
     names.className = "join-field-names";
     names.textContent = (linkData.names || []).join(", ");
     wrap.appendChild(names);
+  } else if (linkData.ids?.length > 1) {
+    const count = document.createElement("span");
+    count.className = "join-field-names muted";
+    count.textContent = `${linkData.ids.length} linked — edit via chips`;
+    wrap.appendChild(count);
   }
 
   const addInput = document.createElement("input");
@@ -291,7 +329,8 @@ function renderJoinFieldCell({
     addInput.disabled = true;
     try {
       const body = defaultNewRow(schema, linkedId);
-      body[col.field] = name;
+      body[displayField] = name;
+      if (fieldName !== displayField) body[fieldName] = name;
       const res = await fetch(entityListUrl(linkedId, linkedListContainer), {
         method: "POST",
         headers: { "Content-Type": "application/json" },

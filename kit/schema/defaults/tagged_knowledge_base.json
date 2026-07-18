@@ -2,7 +2,7 @@
   "$schema": "https://arc.example/schemas/knowledge-site/v1/site.schema.json",
   "schema_version": "1.1",
   "title": "Tagged Knowledge Base — minimal worked package",
-  "description": "Local-only notes app: notebook, note, reference, tag. Demonstrates containment, junction, projection, grid + catalog views, JSON + XLSX export.",
+  "description": "Local-only notes app: notebook, note, reference, tag. Demonstrates containment, junction, projection, grid views with joined columns, JSON + XLSX export.",
 
   "site": {
     "id": "research-notes",
@@ -169,12 +169,14 @@
           "type": "text",
           "sqlite": { "column": "TEXT", "nullable": false, "unique": true },
           "required": true,
-          "publish": true
+          "publish": true,
+          "editor": { "column": true, "order": 1, "header": "Name" }
         },
         "description": {
           "type": "longtext",
           "sqlite": { "column": "TEXT", "nullable": false, "default": "''" },
-          "publish": true
+          "publish": true,
+          "editor": { "column": true, "order": 2, "header": "Description" }
         }
       }
     }
@@ -271,7 +273,12 @@
       "id": "tags_catalog",
       "type": "grid",
       "entity": "tag",
-      "label": "Tags"
+      "label": "Tags",
+      "joins": [],
+      "columns": [
+        { "id": "primary:name", "source": "primary", "field": "name", "mode": "edit" },
+        { "id": "primary:description", "source": "primary", "field": "description", "mode": "edit" }
+      ]
     }
   ],
 

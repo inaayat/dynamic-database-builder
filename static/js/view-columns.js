@@ -71,6 +71,7 @@ export function ensureViewShape(view, schema) {
       field,
       mode: "edit",
     }));
+    delete view.columns_from_fields;
   }
   if (!view.columns?.length && schema) {
     const entity = schema.entity_types[view.entity];
@@ -111,6 +112,35 @@ export function toggleViewJoin(view, schema, relationshipId) {
     return false;
   }
   view.joins.push({ relationship_id: relationshipId });
+  const defaultCol = defaultColumnForJoin(schema, view, relationshipId);
+  if (
+    defaultCol &&
+    defaultCol.source === "join" &&
+    !view.columns.some((c) => c.id === defaultCol.id)
+  ) {
+    view.columns.push(defaultCol);
+  } else if (
+    defaultCol &&
+    defaultCol.source === "primary" &&
+    !view.columns.some((c) => c.id === defaultCol.id)
+  ) {
+    view.columns.push(defaultCol);
+  }
+  return true;
+}
+
+/** Enable a join on a view and ensure its default column is present. */
+export function attachJoinToView(view, schema, relationshipId) {
+  ensureViewShape(view, schema);
+  const already = (view.joins || []).some((j) => j.relationship_id === relationshipId);
+  if (!already) {
+    toggleViewJoin(view, schema, relationshipId);
+  } else {
+    const defaultCol = defaultColumnForJoin(schema, view, relationshipId);
+    if (defaultCol && !view.columns.some((c) => c.id === defaultCol.id)) {
+      view.columns.push(defaultCol);
+    }
+  }
   return true;
 }
 

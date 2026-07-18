@@ -276,6 +276,28 @@ main {
   font-size: var(--fs-md);
 }
 
+.customize-field-edit {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.customize-field-row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.customize-field-row .ie-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.customize-field-row .ie-field-type-select {
+  flex: 0 0 7.5rem;
+}
+
 .view-tab-config {
   display: flex;
   flex-direction: column;

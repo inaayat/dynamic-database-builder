@@ -13,7 +13,7 @@ export const PANEL_HELP = {
   connections:
     "Connections describe how Items relate: one-to-many, many-to-many, or an optional link.",
   views:
-    "Tabs in Workspace. Pick the primary Item, connections, and which columns appear — editable, read-only, or chips.",
+    "Tabs in Workspace. Pick the primary Item, connected Items (joins), and which columns appear — editable, read-only, or chips for many-to-many links.",
 };
 
 export const PRIMITIVE_HELP = {
@@ -61,7 +61,8 @@ export const STORAGE_HELP = {
 export const VIEW_HELP = {
   grid: {
     label: "Tab",
-    summary: "A workspace view — configure which Item, connections, and columns appear.",
+    summary:
+      "A workspace grid over a primary Item plus optional connected joins (chips and related fields).",
     bestFor: ["Notes", "Tags", "References", "any working data"],
   },
 };
