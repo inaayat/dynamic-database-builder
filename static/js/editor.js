@@ -89,7 +89,7 @@ function switchToWorkspace() {
   switchMode("edit");
 }
 
-async function applyWorkspacePayload(data, { startOver = false, created = false } = {}) {
+async function applyWorkspacePayload(data, { startOver = false, created = false, deleted = false } = {}) {
   schema = data.schema;
   activeViewId = null;
   activeWorkspaceId = null;
@@ -98,7 +98,7 @@ async function applyWorkspacePayload(data, { startOver = false, created = false 
   await initWorkspacePicker();
   renderViewTabs(true);
   if (designTab) {
-    designTab.reload(schema, { startOver, created });
+    designTab.reload(schema, { startOver, created, deleted });
   } else {
     initDesign();
   }

@@ -220,6 +220,16 @@ header h1 {
   border-color: #fcd34d;
 }
 
+.app-workspace-delete {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.app-workspace-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .design-workspace-scope {
   margin: 0 0 0.35rem;
   font-size: var(--fs-sm);
@@ -2769,29 +2779,35 @@ button.map-chip:hover,
   z-index: 1;
 }
 
+.brainstorm-head {
+  margin-bottom: 0.75rem;
+}
+
 .brainstorm-brand {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 0.35rem;
+  display: none;
 }
 
 .brainstorm-title {
   margin: 0;
-  font-family: var(--brainstorm-display);
-  font-size: 1.65rem;
+  font-family: var(--font);
+  font-size: var(--fs-xl);
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.25;
   color: var(--text);
 }
 
 .brainstorm-coach {
-  margin: 0.35rem 0 1rem;
-  font-size: var(--fs-md);
+  margin: 0.35rem 0 0;
+  font-size: var(--fs-sm);
   color: var(--muted);
-  max-width: 42rem;
+  max-width: 40rem;
+  line-height: var(--lh);
+}
+
+.brainstorm-setup-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh);
 }
 
 .brainstorm-canvas {
@@ -3104,7 +3120,8 @@ button.map-chip:hover,
 .brainstorm-record-card h3 {
   margin: 0 0 0.55rem;
   font-size: var(--fs-lg);
-  font-family: var(--brainstorm-display);
+  font-family: var(--font);
+  font-weight: 600;
 }
 
 .brainstorm-record-card--dragover {

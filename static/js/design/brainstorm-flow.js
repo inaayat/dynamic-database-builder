@@ -54,14 +54,11 @@ export function mountBrainstormFlow({
 
   const head = document.createElement("header");
   head.className = "brainstorm-head";
-  const brand = document.createElement("div");
-  brand.className = "brainstorm-brand";
-  brand.textContent = "Design";
   const titleEl = document.createElement("h2");
   titleEl.className = "brainstorm-title";
   const coachEl = document.createElement("p");
   coachEl.className = "brainstorm-coach";
-  head.append(brand, titleEl, coachEl);
+  head.append(titleEl, coachEl);
 
   const canvas = document.createElement("div");
   canvas.className = "brainstorm-canvas";
@@ -300,10 +297,10 @@ export function mountBrainstormFlow({
     }
     page.appendChild(chipArea);
 
-    const hints = document.createElement("div");
-    hints.className = "brainstorm-sort-hints muted";
-    hints.innerHTML =
-      "<span>Records: Movie, Theater…</span><span>Details: title, date, rating…</span>";
+    const hints = document.createElement("p");
+    hints.className = "brainstorm-setup-hint muted";
+    hints.textContent =
+      "Records are things you track many of (Movie, Theater). Details are values on a record (Title, Date, Rating).";
     page.appendChild(hints);
 
     const placeSection = document.createElement("section");

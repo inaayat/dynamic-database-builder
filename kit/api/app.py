@@ -145,6 +145,18 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
         payload = _reload_after_workspace_change(app)
         return {"ok": True, **payload}
 
+    @app.delete("/api/workspaces/{workspace_id}")
+    def delete_workspace(workspace_id: str) -> dict:
+        store: WorkspaceStore = app.state.workspace_store
+        try:
+            store.delete_workspace(workspace_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        payload = _reload_after_workspace_change(app)
+        return {"ok": True, **payload}
+
     @app.get("/api/schema")
     def get_schema() -> dict:
         return app.state.schema_loader.to_json()

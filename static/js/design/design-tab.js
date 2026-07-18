@@ -489,7 +489,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   renderMain();
 
   return {
-    reload(schema, { startOver = false, created = false } = {}) {
+    reload(schema, { startOver = false, created = false, deleted = false } = {}) {
       workingSchema = structuredClone(schema);
       selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
       const empty = !Object.keys(workingSchema.entity_types || {}).length;
@@ -497,6 +497,10 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         brainstormMode = true;
         startedBlank = true;
         intro.hidden = true;
+      } else if (deleted) {
+        brainstormMode = false;
+        startedBlank = false;
+        intro.hidden = false;
       }
       statusEl.textContent = "";
       messages.hidden = true;

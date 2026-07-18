@@ -27,7 +27,7 @@ export const STEP_COPY = {
   },
 };
 
-export const GHOST_CHIPS = ["Note", "Tag", "title", "description", "due date", "status"];
+export const GHOST_CHIPS = ["Note", "Tag", "Title", "Description", "Due date", "Status"];
 
 export const FORMAT_OPTIONS = [
   { type: "text", label: "Short text" },
@@ -204,8 +204,8 @@ export function stepBlockedReason(step, state) {
   if (stepReady(step, state)) return "";
   switch (step) {
     case "setup":
-      if (!state.concepts.length) return "Add at least one concept to continue";
-      if (!itemConcepts(state).length) return "Mark at least one concept as a Record";
+      if (!state.concepts.length) return "Add at least one field to continue";
+      if (!itemConcepts(state).length) return "Mark at least one field as a Record";
       {
         const unplaced = unplacedScalars(state);
         if (unplaced.length) {

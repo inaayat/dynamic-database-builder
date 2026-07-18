@@ -3,6 +3,7 @@
 import {
   activateWorkspace,
   createWorkspace,
+  deleteWorkspace,
   listWorkspaces,
   startOverWorkspace,
 } from "./schema-client.js?v=2";
@@ -105,7 +106,13 @@ function mountSidebar({ mount, onChange }) {
   startOverBtn.textContent = "Start over";
   startOverBtn.title = "Clear this workspace design and data";
 
-  actions.append(newBtn, startOverBtn);
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "btn btn-sm app-workspace-delete";
+  deleteBtn.textContent = "Delete workspace";
+  deleteBtn.title = "Remove this workspace and its database";
+
+  actions.append(newBtn, startOverBtn, deleteBtn);
   mount.append(head, list, actions);
 
   newBtn.addEventListener("click", () =>
@@ -118,8 +125,19 @@ function mountSidebar({ mount, onChange }) {
     startOverActive(state, onChange, startOverBtn)
   );
 
+  deleteBtn.addEventListener("click", () =>
+    deleteActive(state, onChange, deleteBtn, async () => {
+      await refresh(state, renderList);
+    })
+  );
+
   function renderList() {
     list.innerHTML = "";
+    const canDelete = state.workspaces.length > 1;
+    deleteBtn.disabled = !canDelete;
+    deleteBtn.title = canDelete
+      ? "Remove this workspace and its database"
+      : "You need at least one workspace";
     state.workspaces.forEach((ws) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -222,6 +240,33 @@ async function startOverActive(state, onChange, trigger) {
     onChange?.(data, { startOver: true });
   } catch (err) {
     alert(err.message || "Could not start over.");
+  } finally {
+    trigger.disabled = false;
+  }
+}
+
+async function deleteActive(state, onChange, trigger, afterDelete) {
+  if (state.workspaces.length <= 1) {
+    alert("You need at least one workspace.");
+    return;
+  }
+  const active = state.workspaces.find((w) => w.id === state.active_id);
+  const name = active?.title || "this workspace";
+  if (
+    !confirm(
+      `Delete “${name}”?\n\nThis removes the workspace, its Design schema, and all data. This cannot be undone.`
+    )
+  ) {
+    return;
+  }
+  trigger.disabled = true;
+  try {
+    const data = await deleteWorkspace(state.active_id);
+    state.active_id = data.active_id;
+    await afterDelete?.();
+    onChange?.(data, { deleted: true });
+  } catch (err) {
+    alert(err.message || "Could not delete workspace.");
   } finally {
     trigger.disabled = false;
   }

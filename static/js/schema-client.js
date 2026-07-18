@@ -119,6 +119,15 @@ export async function startOverWorkspace(workspaceId) {
   return data;
 }
 
+export async function deleteWorkspace(workspaceId) {
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
+  return data;
+}
+
 export async function backupToGitHub() {
   const res = await fetch("/api/backup/github", { method: "POST" });
   const data = await res.json().catch(() => ({}));
