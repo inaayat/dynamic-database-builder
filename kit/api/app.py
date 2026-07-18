@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from kit.api.routes import register_routes
+from kit.backup.github import BackupConfigError, backup_workspaces_to_git
 from kit.engine.db import connect, read_meta
 from kit.engine.migrations import apply_migrations, diff_schema
 from kit.engine.runtime import Runtime
@@ -273,6 +274,20 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
             "package": sl.package_name,
             "source": sl.source,
         }
+
+    @app.post("/api/backup/github")
+    def backup_to_github() -> dict:
+        try:
+            result = backup_workspaces_to_git(
+                ROOT,
+                runtime=app.state.runtime,
+                push=True,
+            )
+        except BackupConfigError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, str(exc)) from exc
+        return result.to_dict()
 
     @app.get("/")
     def editor() -> FileResponse:

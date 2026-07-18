@@ -1,6 +1,7 @@
 # Active schema (legacy — migrated to data/workspaces/)
 data/active-schema.json
 data/workspaces/
+data/backup-config.json
 
 planning.db
 planning.db-shm

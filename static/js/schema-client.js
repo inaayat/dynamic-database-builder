@@ -118,3 +118,12 @@ export async function startOverWorkspace(workspaceId) {
   if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
   return data;
 }
+
+export async function backupToGitHub() {
+  const res = await fetch("/api/backup/github", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(formatApiDetail(data.detail || data.message || data.error) || `HTTP ${res.status}`);
+  }
+  return data;
+}
