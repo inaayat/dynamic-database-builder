@@ -2,11 +2,19 @@ import { initDesignTab } from "./design/design-tab.js";
 import { mountCustomizePanel } from "./views/customize-panel.js";
 import { renderGridView } from "./views/grid-view.js";
 import { ensureViewShape } from "./view-columns.js";
+import {
+  getContainerEntityId,
+  loadStoredWorkspaceId,
+  mountWorkspacePicker,
+  storeWorkspaceId,
+} from "./workspace-picker.js";
 
 let schema = null;
 let activeViewId = null;
+let activeWorkspaceId = null;
 let designTab = null;
 let customizePanel = null;
+let workspacePickerApi = null;
 
 const tabs = document.querySelectorAll(".tab[data-mode]");
 const panels = document.querySelectorAll(".panel[data-mode]");
@@ -28,10 +36,40 @@ function getDefaultContainerId() {
   if (!schema) return "main";
   const seed = schema.seed?.notebooks?.[0]?.id;
   if (seed) return seed;
-  const container = Object.entries(schema.entity_types || {}).find(
-    ([, e]) => e.primitive === "container"
-  );
-  return container?.[1]?.fields?.id?.default || container?.[0] || "main";
+  const container = getContainerEntityId(schema);
+  return container || "main";
+}
+
+function getActiveWorkspaceId() {
+  return activeWorkspaceId || getDefaultContainerId();
+}
+
+async function initWorkspacePicker() {
+  const mount = document.getElementById("workspace-picker");
+  if (!mount || !schema) return;
+  if (!getContainerEntityId(schema)) {
+    mount.hidden = true;
+    return;
+  }
+
+  const siteId = schema.site?.id || "default";
+  activeWorkspaceId = loadStoredWorkspaceId(siteId) || getDefaultContainerId();
+
+  try {
+    workspacePickerApi = await mountWorkspacePicker({
+      mount,
+      schema,
+      getActiveId: () => getActiveWorkspaceId(),
+      onSelect: (id) => {
+        activeWorkspaceId = id;
+        storeWorkspaceId(siteId, id);
+        if (activeViewId) showView(activeViewId);
+      },
+    });
+  } catch (err) {
+    console.error("Workspace picker failed:", err);
+    mount.hidden = true;
+  }
 }
 
 function switchToWorkspace() {
@@ -50,6 +88,7 @@ async function loadSchema() {
     document.getElementById("site-meta").textContent =
       `${schema.site.id} · schema ${schema.schema_version}`;
 
+    await initWorkspacePicker();
     renderViewTabs();
     initCustomizePanel();
     try {
@@ -155,7 +194,7 @@ async function showView(viewId) {
   const view = schema.views.find((v) => v.id === viewId);
   if (!mount || !view) return;
 
-  const notebookId = getDefaultContainerId();
+  const notebookId = getActiveWorkspaceId();
   ensureViewShape(view, schema);
   await renderGridView({ container: mount, schema, notebookId, view });
 }

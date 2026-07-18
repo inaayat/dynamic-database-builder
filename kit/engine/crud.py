@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
+import uuid
+from datetime import date
 from typing import Any, Optional
 
 from kit.engine.junction import enrich_row_links
@@ -125,12 +128,24 @@ def create_row(
 ) -> dict:
     entity = package.get_entity(entity_id)
     table = q(entity.table)
-    import uuid
 
     if entity_id == "reference" and not data.get("id"):
         data["id"] = f"ref-{uuid.uuid4().hex[:8]}"
     if entity_id == "tag" and not data.get("id"):
         data["id"] = f"tag-{uuid.uuid4().hex[:8]}"
+    if entity.primitive == "container" and not data.get("id"):
+        raw = (data.get("title") or entity.label or "workspace").lower()
+        base = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")[:40] or "workspace"
+        candidate = base
+        n = 2
+        while conn.execute(
+            f"SELECT 1 FROM {table} WHERE id = ?", (candidate,)
+        ).fetchone():
+            candidate = f"{base}_{n}"
+            n += 1
+        data["id"] = candidate
+    if entity.primitive == "container" and "updated" in entity.fields and not data.get("updated"):
+        data["updated"] = date.today().isoformat()
     if entity_id == "note" and container_id:
         data["notebook_id"] = container_id
         if not data.get("id"):
