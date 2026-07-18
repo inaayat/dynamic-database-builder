@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import sqlite3
 
 from kit.engine.junction import set_note_tags
 from kit.engine.serialize import serialize_field
 from kit.schema.model import SitePackage
 
 
-def needs_seed(conn: sqlite3.Connection, package: SitePackage) -> bool:
+def needs_seed(conn, package: SitePackage) -> bool:
     notebook = package.get_entity("notebook")
     row = conn.execute(f"SELECT COUNT(*) AS c FROM {notebook.table}").fetchone()
     return row["c"] == 0
 
 
-def apply_seed(conn: sqlite3.Connection, package: SitePackage) -> None:
+def apply_seed(conn, package: SitePackage) -> None:
     if not package.seed or not needs_seed(conn, package):
         return
 

@@ -103,7 +103,14 @@ class SchemaLoader:
             return json.load(f)
 
     def _write_active(self, data: dict[str, Any]) -> Path:
-        path = active_schema_path(self.root)
+        from kit.schema.workspaces import WorkspaceStore
+        from kit.engine.dialect import use_postgres
+
+        store = WorkspaceStore(self.root)
+        store.ensure_initialized()
+        if use_postgres():
+            return store.save_schema(data)
+        path = store.active_schema_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -119,11 +126,24 @@ class SchemaLoader:
         return package
 
     def load(self) -> SitePackage:
-        active = active_schema_path(self.root)
-        if active.is_file():
-            data = self._read_json(active)
-            ws_id = data.get("site", {}).get("id", "active")
-            return self.load_from_data(data, source=f"workspace:{ws_id}")
+        from kit.schema.workspaces import WorkspaceStore
+        from kit.engine.dialect import use_postgres
+
+        store = WorkspaceStore(self.root)
+        store.ensure_initialized()
+        if use_postgres():
+            try:
+                data = store.load_schema()
+                ws_id = data.get("site", {}).get("id", "active")
+                return self.load_from_data(data, source=f"workspace:{ws_id}")
+            except FileNotFoundError:
+                pass
+        else:
+            active = store.active_schema_path()
+            if active.is_file():
+                data = self._read_json(active)
+                ws_id = data.get("site", {}).get("id", "active")
+                return self.load_from_data(data, source=f"workspace:{ws_id}")
 
         data = self._read_json(self.package_path())
         self._write_active(data)

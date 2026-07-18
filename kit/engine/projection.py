@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import uuid
 from typing import Any, Optional
 
@@ -18,7 +17,7 @@ from kit.schema.model import Relationship, SitePackage
 
 
 def append_projection_line(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     rel: Relationship,
     target_ref: dict,
@@ -56,7 +55,7 @@ def append_projection_line(
 
 
 def remove_projection_line(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     rel: Relationship,
     target_ref: dict,
@@ -88,7 +87,7 @@ def remove_projection_line(
 
 
 def sync_projection_field_to_catalog(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     rel: Relationship,
     notebook_id: str,

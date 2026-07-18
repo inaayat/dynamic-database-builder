@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Any, Optional
 
 from kit.engine.projection import append_projection_line, remove_projection_line
@@ -53,7 +52,7 @@ def _display_field(entity_fields: dict[str, dict]) -> str:
     return "id"
 
 
-def get_junction_refs(conn: sqlite3.Connection, table: str, from_col: str, from_id: str) -> list[dict]:
+def get_junction_refs(conn, table: str, from_col: str, from_id: str) -> list[dict]:
     rows = conn.execute(
         f"SELECT * FROM {table} WHERE {from_col} = ?",
         (from_id,),
@@ -62,7 +61,7 @@ def get_junction_refs(conn: sqlite3.Connection, table: str, from_col: str, from_
 
 
 def get_linked_ids(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     relationship_id: str,
     entity_id: str,
@@ -87,7 +86,7 @@ def get_linked_ids(
 
 
 def get_linked_labels(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     relationship_id: str,
     entity_id: str,
@@ -114,7 +113,7 @@ def get_linked_labels(
 
 
 def set_linked_ids(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     relationship_id: str,
     entity_id: str,
@@ -190,7 +189,7 @@ def set_linked_ids(
 
 
 def enrich_row_links(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     entity_id: str,
     row: dict,
@@ -214,7 +213,7 @@ def enrich_row_links(
 
 
 def set_tags(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     relationship_id: str,
     from_id: str,
@@ -273,7 +272,7 @@ def set_tags(
 
 
 def set_note_tags(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     notebook_id: str,
     note_id: int,
@@ -301,7 +300,7 @@ def set_note_tags(
     conn.commit()
 
 
-def get_tag_names_for_note(conn: sqlite3.Connection, notebook_id: str, note_id: int) -> list[str]:
+def get_tag_names_for_note(conn, notebook_id: str, note_id: int) -> list[str]:
     rows = conn.execute(
         """
         SELECT t.name FROM note_tags nt

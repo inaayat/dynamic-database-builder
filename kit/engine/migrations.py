@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import copy
-import sqlite3
 from typing import Any, Optional
 
 from kit.engine.ddl import create_entity_table_sql, create_junction_table_sql
@@ -14,14 +12,33 @@ from kit.schema.model import SitePackage
 SYSTEM_TABLES = {"_meta", "sqlite_sequence"}
 
 
-def list_tables(conn: sqlite3.Connection) -> set[str]:
+def list_tables(conn) -> set[str]:
+    if getattr(conn, "dialect", "sqlite") == "postgres":
+        rows = conn.execute(
+            """
+            SELECT tablename AS name
+            FROM pg_catalog.pg_tables
+            WHERE schemaname = current_schema()
+            """
+        ).fetchall()
+        return {row["name"] for row in rows}
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()
     return {row[0] for row in rows}
 
 
-def list_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+def list_columns(conn, table: str) -> set[str]:
+    if getattr(conn, "dialect", "sqlite") == "postgres":
+        rows = conn.execute(
+            """
+            SELECT column_name AS name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = %s
+            """,
+            (table,),
+        ).fetchall()
+        return {row["name"] for row in rows}
     rows = conn.execute(f"PRAGMA table_info({q(table)})").fetchall()
     return {row[1] for row in rows}
 
@@ -37,7 +54,7 @@ def expected_tables(package: SitePackage) -> dict[str, Optional[str]]:
     return tables
 
 
-def diff_schema(conn: sqlite3.Connection, package: SitePackage) -> dict[str, Any]:
+def diff_schema(conn, package: SitePackage) -> dict[str, Any]:
     """Compare live DB against schema; additive + destructive preview."""
     existing = list_tables(conn)
     expected = expected_tables(package)
@@ -100,14 +117,17 @@ def _alter_add_column_sql(table: str, field_name: str, field_def: dict) -> str:
     col_type = sqlite.get("column", "TEXT")
     parts = [f"ALTER TABLE {q(table)} ADD COLUMN {q(field_name)} {col_type}"]
     if sqlite.get("nullable") is False:
-        parts.append("NOT NULL")
+        # Postgres cannot ADD COLUMN NOT NULL without a default on existing rows.
+        if "default" in sqlite:
+            parts.append("NOT NULL")
+        # else leave nullable on add for Postgres safety
     if "default" in sqlite:
         parts.append(f"DEFAULT {sqlite['default']}")
     return " ".join(parts)
 
 
 def apply_migrations(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     diff: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:

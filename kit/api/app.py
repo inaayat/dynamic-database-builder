@@ -15,6 +15,7 @@ from starlette.responses import Response
 from kit.api.routes import register_routes
 from kit.backup.github import BackupConfigError, backup_workspaces_to_git
 from kit.engine.db import connect, read_meta
+from kit.engine.dialect import use_postgres
 from kit.engine.migrations import apply_migrations, diff_schema
 from kit.engine.runtime import Runtime
 from kit.schema.loader import (
@@ -81,7 +82,7 @@ def _reload_after_workspace_change(app: FastAPI) -> dict[str, Any]:
     return {
         "schema": loader.to_json(),
         "active_id": app.state.workspace_store.get_active_id(),
-        "meta": read_meta(runtime.db_path),
+        "meta": read_meta(runtime.db_path, workspace_id=runtime.workspace_id),
     }
 
 
@@ -186,7 +187,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
     def validate_schema(body: Optional[dict[str, Any]] = None) -> dict:
         data = body if body else app.state.schema_loader.to_json()
         result = SchemaLoader.validate(data)
-        conn = connect(db_path)
+        conn = connect(db_path, workspace_id=app.state.runtime.workspace_id)
         try:
             if result["valid"]:
                 package_for_diff = SitePackageFromDict(data)
@@ -204,7 +205,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
             raise HTTPException(400, {"errors": validation["errors"]})
 
         package_obj = SitePackageFromDict(data)
-        conn = connect(db_path)
+        conn = connect(db_path, workspace_id=package_obj.site.id)
         try:
             preview = diff_schema(conn, package_obj)
             if preview.get("destructive"):
@@ -225,7 +226,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
             "ok": True,
             "diff": preview,
             "schema": loader_inst.to_json(),
-            "meta": read_meta(runtime_obj.db_path),
+            "meta": read_meta(runtime_obj.db_path, workspace_id=runtime_obj.workspace_id),
         }
 
     @app.post("/api/schema/package/{package_id}")
@@ -239,7 +240,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
 
         runtime_obj: Runtime = app.state.runtime
-        conn = connect(runtime_obj.db_path)
+        conn = connect(runtime_obj.db_path, workspace_id=loader_inst.package.site.id)
         preview: dict[str, Any] = {}
         try:
             preview = diff_schema(conn, loader_inst.package)
@@ -253,7 +254,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
                 app.state.runtime = runtime_obj
                 app.state.schema_loader = loader_inst
                 conn.close()
-                conn = connect(runtime_obj.db_path)
+                conn = connect(runtime_obj.db_path, workspace_id=runtime_obj.workspace_id)
                 preview = diff_schema(conn, loader_inst.package)
             if not preview.get("destructive"):
                 apply_migrations(conn, loader_inst.package, preview)
@@ -271,7 +272,10 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
     @app.get("/api/meta")
     def get_meta() -> dict:
         rt: Runtime = app.state.runtime
-        return {"database": str(rt.db_path.name), "meta": read_meta(rt.db_path)}
+        return {
+            "database": "neon" if use_postgres() else str(rt.db_path.name),
+            "meta": read_meta(rt.db_path, workspace_id=rt.workspace_id),
+        }
 
     @app.get("/api/health")
     def get_health() -> dict:

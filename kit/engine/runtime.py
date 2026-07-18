@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 from kit.engine.crud import create_row, delete_row, get_row, list_rows, patch_row
 from kit.engine.db import connect, get_db_path, init_meta
@@ -19,11 +19,12 @@ class Runtime:
     def __init__(self, package: SitePackage, root: Path) -> None:
         self.package = package
         self.root = root
+        self.workspace_id = package.site.id
         self.db_path = get_db_path(package, root)
         self.bootstrap()
 
     def bootstrap(self, seed: bool = True) -> None:
-        conn = connect(self.db_path)
+        conn = connect(self.db_path, workspace_id=self.workspace_id)
         try:
             init_meta(conn, self.package)
             apply_schema_ddl(conn, self.package)
@@ -34,10 +35,12 @@ class Runtime:
 
     def reload(self, package: SitePackage, seed: bool = False) -> None:
         self.package = package
+        self.workspace_id = package.site.id
+        self.db_path = get_db_path(package, self.root)
         self.bootstrap(seed=seed)
 
     def _with_conn(self, fn: Callable) -> T:
-        conn = connect(self.db_path)
+        conn = connect(self.db_path, workspace_id=self.workspace_id)
         try:
             return fn(conn)
         finally:
@@ -139,16 +142,17 @@ class Runtime:
 
     def connection(self):
         """Context manager for export modules that need direct conn access."""
-        return _ConnectionCtx(self.db_path)
+        return _ConnectionCtx(self.db_path, self.workspace_id)
 
 
 class _ConnectionCtx:
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, workspace_id: str) -> None:
         self.db_path = db_path
+        self.workspace_id = workspace_id
         self.conn = None
 
     def __enter__(self):
-        self.conn = connect(self.db_path)
+        self.conn = connect(self.db_path, workspace_id=self.workspace_id)
         return self.conn
 
     def __exit__(self, *args):

@@ -1,8 +1,6 @@
-"""Generate SQLite DDL from schema package."""
+"""Generate SQL DDL from schema package (SQLite + Postgres compatible)."""
 
 from __future__ import annotations
-
-import sqlite3
 
 from kit.schema.model import EntityType, Relationship, SitePackage
 
@@ -35,7 +33,7 @@ def create_entity_table_sql(entity: EntityType) -> str:
     pk_cols = _pk_columns(entity)
     col_lines = [_column_sql(n, f, pk_cols) for n, f in entity.fields.items()]
     if len(pk_cols) == 1:
-        pass  # single PK already on column
+        col_lines.append(f"PRIMARY KEY ({q(pk_cols[0])})")
     else:
         col_lines.append(f"PRIMARY KEY ({', '.join(q(c) for c in pk_cols)})")
     return f"CREATE TABLE IF NOT EXISTS {q(entity.table)} (\n  " + ",\n  ".join(col_lines) + "\n)"
@@ -55,7 +53,7 @@ def create_junction_table_sql(rel: Relationship) -> str:
     return f"CREATE TABLE IF NOT EXISTS {q(rel.junction.table)} (\n  " + ",\n  ".join(col_lines) + "\n)"
 
 
-def apply_schema_ddl(conn: sqlite3.Connection, package: SitePackage) -> None:
+def apply_schema_ddl(conn, package: SitePackage) -> None:
     for entity in package.entity_types.values():
         conn.execute(create_entity_table_sql(entity))
     for rel in package.relationships:

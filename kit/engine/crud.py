@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 import uuid
 from datetime import date
 from typing import Any, Optional
@@ -22,7 +21,7 @@ def _conventions(package: SitePackage) -> Optional[dict]:
 
 
 def list_rows(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     entity_id: str,
     container_id: Optional[str] = None,
@@ -48,7 +47,7 @@ def list_rows(
 
 
 def get_row(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     entity_id: str,
     row_id: Any,
@@ -74,7 +73,7 @@ def get_row(
 
 
 def patch_row(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     entity_id: str,
     row_id: Any,
@@ -120,7 +119,7 @@ def patch_row(
 
 
 def create_row(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     entity_id: str,
     data: dict,
@@ -168,7 +167,7 @@ def create_row(
 
 
 def delete_row(
-    conn: sqlite3.Connection,
+    conn,
     package: SitePackage,
     entity_id: str,
     row_id: Any,

@@ -1,0 +1,15 @@
+[project]
+name = "dynamic-database-builder"
+version = "0.1.0"
+description = "Schema-driven knowledge and planning apps"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "openpyxl>=3.1.0",
+    "psycopg[binary]>=3.2.0",
+]
+
+[tool.vercel]
+entrypoint = "kit.api.app:app"

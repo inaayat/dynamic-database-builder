@@ -47,6 +47,12 @@ python run.py
 Open http://127.0.0.1:8771/ — editor shell with Edit/Design tabs.  
 API: `GET /api/schema`, `GET /api/health`, `GET /api/meta`
 
+## Live deployment
+
+Production (Vercel + Neon Postgres): https://dynamic-database-builder.vercel.app
+
+When `DATABASE_URL` is set (as on Vercel), workspaces and data persist in Neon instead of local SQLite files.
+
 ## First sprint (Week 1)
 
 1. `kit/schema/model.py` — Pydantic models for schema v1.1
