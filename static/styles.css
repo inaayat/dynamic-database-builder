@@ -2036,6 +2036,7 @@ main {
 .brainstorm-canvas {
   min-height: 260px;
   margin-bottom: 1rem;
+  position: relative;
 }
 
 .brainstorm-setup-page {
@@ -2358,6 +2359,91 @@ main {
   gap: 0.35rem;
 }
 
+.brainstorm-value-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.45rem;
+  background: var(--brainstorm-chip);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  animation: brainstorm-chip-in 0.2s ease-out;
+}
+
+.brainstorm-value-row--identity {
+  background: color-mix(in srgb, var(--brainstorm-accent) 8%, var(--brainstorm-surface));
+  border: 1px solid color-mix(in srgb, var(--brainstorm-accent) 18%, var(--border));
+}
+
+.brainstorm-value-row--record {
+  border-left: 3px solid var(--brainstorm-accent);
+}
+
+.brainstorm-value-name {
+  font-weight: 500;
+  min-width: 0;
+}
+
+.brainstorm-value-meta,
+.brainstorm-value-kind {
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.brainstorm-value-meta {
+  margin-left: auto;
+}
+
+.brainstorm-add-value {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+}
+
+.brainstorm-value-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 10rem;
+  max-width: min(18rem, calc(100vw - 2rem));
+  padding: 0.45rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.brainstorm-value-menu--centered {
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%);
+}
+
+.brainstorm-value-menu-head {
+  margin: 0.15rem 0.35rem 0.25rem;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.brainstorm-value-menu-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  color: var(--text);
+}
+
+.brainstorm-value-menu-btn:hover,
+.brainstorm-value-menu-btn:focus-visible {
+  background: var(--brainstorm-accent-soft);
+  outline: none;
+}
+
 .brainstorm-placed-detail {
   display: flex;
   align-items: center;
@@ -2603,4 +2689,204 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Mobile / responsive layout ─────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .workspace-layout {
+    flex-direction: column;
+  }
+
+  .workspace-toolbar {
+    gap: var(--space-2);
+  }
+
+  .workspace-toolbar #customize-btn {
+    margin-left: 0;
+  }
+
+  .workspace-picker-select {
+    min-width: 0;
+    max-width: none;
+    flex: 1;
+  }
+
+  .customize-panel:not([hidden]) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    width: 100%;
+    max-height: min(75vh, 32rem);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  .design-mount {
+    padding: var(--space-3);
+  }
+
+  .design-toolbar {
+    gap: var(--space-2);
+  }
+
+  .design-toolbar .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .brainstorm-shell {
+    padding: 1rem 0.85rem 0.85rem;
+    min-height: 0;
+    border-radius: 10px;
+  }
+
+  .brainstorm-title {
+    font-size: var(--fs-lg);
+  }
+
+  .brainstorm-chips {
+    min-height: 100px;
+    padding: 0.75rem;
+  }
+
+  .brainstorm-setup-chips {
+    min-height: 100px;
+  }
+
+  .brainstorm-concept-row {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .brainstorm-sort-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .brainstorm-record-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brainstorm-value-row {
+    flex-wrap: wrap;
+  }
+
+  .brainstorm-format-select,
+  .brainstorm-cardinality-select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .brainstorm-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+
+  .brainstorm-footer-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .brainstorm-footer-actions .btn {
+    flex: 1;
+  }
+
+  .brainstorm-footer-reason {
+    text-align: center;
+  }
+
+  .data-grid-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-topbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    min-height: 0;
+  }
+
+  .header-primary {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .header-tabs {
+    order: 2;
+    flex: 1;
+  }
+
+  .header-tabs .tab {
+    flex: 1;
+    text-align: center;
+  }
+
+  .app-topbar .header-actions {
+    order: 3;
+    margin-left: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  .export-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    justify-content: flex-end;
+  }
+
+  .export-bar .btn {
+    padding: 0.25rem 0.45rem;
+    font-size: var(--fs-xs);
+  }
+
+  .auth-user-email {
+    max-width: 6rem;
+  }
+
+  .view-tabs {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.15rem;
+  }
+
+  .view-tab {
+    flex-shrink: 0;
+  }
+
+  main {
+    padding: var(--space-3);
+  }
+}
+
+@media (max-width: 480px) {
+  .app-workspace-sidebar,
+  .app-workspace-sidebar-mount {
+    max-height: 8.5rem;
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .app-workspace-sidebar-item {
+    min-width: 7.5rem;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .brainstorm-toggle--chip {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .brainstorm-toggle--chip .brainstorm-toggle-btn {
+    flex: 1;
+  }
 }

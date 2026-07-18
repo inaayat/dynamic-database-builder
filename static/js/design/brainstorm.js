@@ -10,24 +10,29 @@ import { slugify } from "./modals.js";
 
 export const STEP_COPY = {
   setup: {
-    title: "Brainstorm your workspace",
-    coach: "Add fields at the top, mark Record or Detail on each chip, then drag details onto records below.",
-  },
-  link: {
-    title: "Connect records",
-    coach: "Add another record as a field when they belong together — like Tags on a Note.",
+    title: "Build your workspace",
+    coach:
+      "Add concepts at the top, mark each as Record or Detail, then add values on each record card — fields or other records.",
   },
   review: {
     title: "Does this look right?",
-    coach: "Links were created from the records you connected.",
+    coach: "Each record stores a name plus the values you added. Links were created automatically.",
   },
   tabs: {
     title: "Workspace tabs",
-    coach: "Each tab shows one kind of record. Joins are filled in from your links.",
+    coach: "Each tab shows one kind of record. Joins are filled in from your linked records.",
   },
 };
 
-export const GHOST_CHIPS = ["Note", "Tag", "Title", "Description", "Due date", "Status"];
+export const GHOST_CHIPS = [
+  "Note",
+  "Tag",
+  "Teacher",
+  "Class",
+  "Description",
+  "Due date",
+  "Status",
+];
 
 export const FORMAT_OPTIONS = [
   { type: "text", label: "Short text" },
@@ -40,8 +45,16 @@ export const FORMAT_OPTIONS = [
   { type: "bullet_list", label: "Bullets" },
 ];
 
-const RECORD_HINTS = /^(note|tag|student|class|notebook|reference|project|task|person|contact|book|article|category|folder|rubric|theme|resource)s?$/i;
-const DETAIL_HINTS = /^(title|name|description|body|summary|status|due\s*date|date|link|url|notes|content|priority|type|email|phone)$/i;
+export const CARDINALITY_LABELS = {
+  many: { label: "Many", hint: "Can pick several" },
+  one: { label: "One", hint: "At most one" },
+  owned: { label: "Owned by", hint: "Belongs inside" },
+};
+
+const RECORD_HINTS =
+  /^(note|tag|student|class|teacher|subject|notebook|reference|project|task|person|contact|book|article|category|folder|rubric|theme|resource)s?$/i;
+const DETAIL_HINTS =
+  /^(title|name|description|body|summary|status|due\s*date|date|link|url|notes|content|priority|type|email|phone|bio)$/i;
 
 const FIELD_TYPE_HINTS = {
   description: "longtext",
@@ -49,6 +62,7 @@ const FIELD_TYPE_HINTS = {
   summary: "longtext",
   notes: "longtext",
   content: "longtext",
+  bio: "longtext",
   date: "date",
   "due date": "date",
   status: "enum",
@@ -68,7 +82,7 @@ const CARDINALITY_TO_STORAGE = {
 let nextId = 1;
 
 export function createBrainstormState() {
-  return { concepts: [], placements: [], links: [] };
+  return { concepts: [], placements: [] };
 }
 
 export function createConcept(label) {
@@ -121,16 +135,24 @@ export function scalarConcepts(state) {
   return state.concepts.filter((c) => effectiveKind(c) === "scalar");
 }
 
+export function isScalarPlacement(p) {
+  return Boolean(p.conceptId) && !p.linkTargetId;
+}
+
+export function isRecordLinkPlacement(p) {
+  return Boolean(p.linkTargetId);
+}
+
 export function unplacedScalars(state) {
   const placed = new Set(
-    state.placements.filter((p) => !p.linkTargetId).map((p) => p.conceptId)
+    state.placements.filter((p) => isScalarPlacement(p)).map((p) => p.conceptId)
   );
   return scalarConcepts(state).filter((c) => !placed.has(c.id));
 }
 
 export function scalarsOnRecord(state, itemConceptId) {
   return state.placements
-    .filter((p) => !p.linkTargetId && p.entityId === itemConceptId)
+    .filter((p) => isScalarPlacement(p) && p.entityId === itemConceptId)
     .map((p) => ({
       placement: p,
       concept: state.concepts.find((c) => c.id === p.conceptId),
@@ -138,48 +160,25 @@ export function scalarsOnRecord(state, itemConceptId) {
     .filter((x) => x.concept);
 }
 
-export function linksOnRecord(state, itemConceptId) {
-  return (state.links || []).filter((l) => l.fromConceptId === itemConceptId);
+export function recordsOnRecord(state, itemConceptId) {
+  return state.placements
+    .filter((p) => isRecordLinkPlacement(p) && p.entityId === itemConceptId)
+    .map((p) => ({
+      placement: p,
+      concept: state.concepts.find((c) => c.id === p.linkTargetId),
+    }))
+    .filter((x) => x.concept);
 }
 
-export function recordHasTitleLike(state, itemConceptId) {
-  const titleLike = /^(title|name)$/i;
-  return state.placements.some((p) => {
-    if (p.entityId !== itemConceptId || p.linkTargetId) return false;
-    const c = state.concepts.find((sc) => sc.id === p.conceptId);
-    return c && titleLike.test(c.label);
-  });
-}
-
-export function ensureTitleDetailOnRecord(state, itemConceptId) {
-  if (recordHasTitleLike(state, itemConceptId)) return;
-  const item = state.concepts.find((c) => c.id === itemConceptId);
-  const baseLabel =
-    item?.label && !/^(title|name)$/i.test(item.label) ? `${item.label} name` : "Title";
-  let label = baseLabel;
-  let n = 2;
-  while (
-    state.concepts.some(
-      (c) =>
-        c.label.toLowerCase() === label.toLowerCase() &&
-        state.placements.some((p) => p.conceptId === c.id)
-    )
-  ) {
-    label = `${baseLabel} ${n++}`;
-  }
-  let concept = state.concepts.find(
-    (c) => c.kind === "scalar" && c.label.toLowerCase() === label.toLowerCase()
+export function availableRecordLinks(state, entityId) {
+  const linked = new Set(
+    recordsOnRecord(state, entityId).map(({ concept }) => concept.id)
   );
-  if (!concept) {
-    concept = createConcept(label);
-    if (concept) {
-      concept.kind = "scalar";
-      state.concepts.push(concept);
-    }
-  }
-  if (concept?.kind === "scalar") {
-    placeScalar(state, concept.id, itemConceptId, "text");
-  }
+  return itemConcepts(state).filter((c) => c.id !== entityId && !linked.has(c.id));
+}
+
+export function recordIdentityLabel(itemConcept) {
+  return itemConcept?.label ? `${itemConcept.label} name` : "Name";
 }
 
 export function stepReady(step, state) {
@@ -189,8 +188,6 @@ export function stepReady(step, state) {
       if (!itemConcepts(state).length) return false;
       return unplacedScalars(state).length === 0;
     }
-    case "link":
-      return true;
     case "review":
       return itemConcepts(state).length > 0;
     case "tabs":
@@ -204,8 +201,8 @@ export function stepBlockedReason(step, state) {
   if (stepReady(step, state)) return "";
   switch (step) {
     case "setup":
-      if (!state.concepts.length) return "Add at least one field to continue";
-      if (!itemConcepts(state).length) return "Mark at least one field as a Record";
+      if (!state.concepts.length) return "Add at least one concept to continue";
+      if (!itemConcepts(state).length) return "Mark at least one concept as a Record";
       {
         const unplaced = unplacedScalars(state);
         if (unplaced.length) {
@@ -213,19 +210,6 @@ export function stepBlockedReason(step, state) {
         }
       }
       return "";
-    case "dump":
-      return "Add at least one concept to continue";
-    case "sort":
-      if (!state.concepts.length) return "Add concepts first";
-      if (!itemConcepts(state).length) return "Mark at least one chip as a Record";
-      return "Mark each chip as a Record or a Detail to continue";
-    case "place": {
-      const unplaced = unplacedScalars(state);
-      if (unplaced.length) {
-        return `Place ${unplaced.length} detail${unplaced.length === 1 ? "" : "s"} on a record`;
-      }
-      return "";
-    }
     default:
       return "";
   }
@@ -233,26 +217,28 @@ export function stepBlockedReason(step, state) {
 
 /** Demote item → warn if linked elsewhere. */
 export function demoteWarnings(state, conceptId) {
-  const asSource = (state.links || []).filter((l) => l.fromConceptId === conceptId);
-  const asTarget = (state.links || []).filter((l) => l.toConceptId === conceptId);
-  const placements = state.placements.filter(
-    (p) => p.entityId === conceptId || p.linkTargetId === conceptId
+  const asSource = state.placements.filter(
+    (p) => p.entityId === conceptId && p.linkTargetId
   );
-  if (!asSource.length && !asTarget.length && !placements.length) return [];
+  const asTarget = state.placements.filter((p) => p.linkTargetId === conceptId);
+  const scalarPlacements = state.placements.filter(
+    (p) => p.conceptId === conceptId || (p.entityId === conceptId && !p.linkTargetId)
+  );
+  if (!asSource.length && !asTarget.length && !scalarPlacements.length) return [];
   const lines = [];
-  if (asSource.length) lines.push("Links from this record will be removed.");
-  if (asTarget.length) lines.push("Other records link here — those links will be removed.");
-  if (placements.length) lines.push("Details placed on this record will be unplaced.");
+  if (asSource.length) lines.push("Values on this record will be removed.");
+  if (asTarget.length) lines.push("Other records store this — those values will be removed.");
+  if (scalarPlacements.length) lines.push("Details placed on this record will be unplaced.");
   return lines;
 }
 
 export function demoteToScalar(state, conceptId) {
   const warnings = demoteWarnings(state, conceptId);
-  state.links = (state.links || []).filter(
-    (l) => l.fromConceptId !== conceptId && l.toConceptId !== conceptId
-  );
   state.placements = state.placements.filter(
-    (p) => p.entityId !== conceptId && p.linkTargetId !== conceptId
+    (p) =>
+      p.conceptId !== conceptId &&
+      p.entityId !== conceptId &&
+      p.linkTargetId !== conceptId
   );
   const c = state.concepts.find((x) => x.id === conceptId);
   if (c) c.kind = "scalar";
@@ -265,37 +251,48 @@ export function promoteToItem(state, conceptId) {
   state.placements = state.placements.filter((p) => p.conceptId !== conceptId);
 }
 
-export function addLink(state, fromConceptId, toConceptId, cardinality = "many") {
-  if (fromConceptId === toConceptId) return { error: "Can't link a record to itself." };
-  const exists = (state.links || []).some(
-    (l) => l.fromConceptId === fromConceptId && l.toConceptId === toConceptId
-  );
-  if (exists) return { error: "That link already exists." };
-  state.links = state.links || [];
-  state.links.push({ fromConceptId, toConceptId, cardinality });
-  return { ok: true };
-}
-
-export function removeLink(state, fromConceptId, toConceptId) {
-  state.links = (state.links || []).filter(
-    (l) => !(l.fromConceptId === fromConceptId && l.toConceptId === toConceptId)
-  );
-}
-
 export function placeScalar(state, conceptId, entityId, fieldType) {
   state.placements = state.placements.filter((p) => p.conceptId !== conceptId);
   state.placements.push({
     conceptId,
     entityId,
-    fieldType: fieldType || suggestFieldType(
-      state.concepts.find((c) => c.id === conceptId)?.label || ""
-    ),
+    fieldType:
+      fieldType ||
+      suggestFieldType(
+        state.concepts.find((c) => c.id === conceptId)?.label || ""
+      ),
   });
 }
 
 export function unplaceScalar(state, conceptId) {
   state.placements = state.placements.filter(
-    (p) => !(p.conceptId === conceptId && !p.linkTargetId)
+    (p) => !(p.conceptId === conceptId && isScalarPlacement(p))
+  );
+}
+
+export function placeRecordLink(state, entityId, linkTargetId, cardinality = "many") {
+  if (entityId === linkTargetId) return { error: "Can't store a record on itself." };
+  const exists = state.placements.some(
+    (p) => p.entityId === entityId && p.linkTargetId === linkTargetId
+  );
+  if (exists) return { error: "That record is already a value here." };
+  state.placements.push({ entityId, linkTargetId, cardinality });
+  return { ok: true };
+}
+
+export function removeRecordLink(state, entityId, linkTargetId) {
+  state.placements = state.placements.filter(
+    (p) => !(p.entityId === entityId && p.linkTargetId === linkTargetId)
+  );
+}
+
+export function removeConcept(state, conceptId) {
+  state.concepts = state.concepts.filter((x) => x.id !== conceptId);
+  state.placements = state.placements.filter(
+    (p) =>
+      p.conceptId !== conceptId &&
+      p.entityId !== conceptId &&
+      p.linkTargetId !== conceptId
   );
 }
 
@@ -308,7 +305,17 @@ export function compileToSchema(state, baseSchema) {
     if (!result.error) conceptToEntityId.set(c.id, result.id);
   }
 
-  for (const p of state.placements.filter((pl) => !pl.linkTargetId)) {
+  for (const c of itemConcepts(state)) {
+    const entityId = conceptToEntityId.get(c.id);
+    if (!entityId) continue;
+    const entity = schema.entity_types[entityId];
+    if (entity?.fields?.title) {
+      entity.fields.title.editor = entity.fields.title.editor || {};
+      entity.fields.title.editor.header = recordIdentityLabel(c);
+    }
+  }
+
+  for (const p of state.placements.filter((pl) => isScalarPlacement(pl))) {
     const entityId = conceptToEntityId.get(p.entityId);
     const concept = state.concepts.find((c) => c.id === p.conceptId);
     if (!entityId || !concept) continue;
@@ -339,29 +346,18 @@ export function compileToSchema(state, baseSchema) {
     addValueToEntity(schema, entityId, { label: concept.label, type: fieldType });
   }
 
-  for (const c of itemConcepts(state)) {
-    const entityId = conceptToEntityId.get(c.id);
-    if (!entityId) continue;
-    if (!recordHasTitleLike(state, c.id)) {
-      const entity = schema.entity_types[entityId];
-      if (entity?.fields?.title) {
-        entity.fields.title.editor = entity.fields.title.editor || {};
-        entity.fields.title.editor.header = "Title";
-      }
-    }
-  }
-
-  for (const link of state.links || []) {
-    const fromId = conceptToEntityId.get(link.fromConceptId);
-    const toId = conceptToEntityId.get(link.toConceptId);
+  for (const p of state.placements.filter((pl) => isRecordLinkPlacement(pl))) {
+    const fromId = conceptToEntityId.get(p.entityId);
+    const toId = conceptToEntityId.get(p.linkTargetId);
     if (!fromId || !toId) continue;
 
-    const targetConcept = state.concepts.find((c) => c.id === link.toConceptId);
-    const storage = CARDINALITY_TO_STORAGE[link.cardinality || "many"];
+    const targetConcept = state.concepts.find((c) => c.id === p.linkTargetId);
+    const sourceConcept = state.concepts.find((c) => c.id === p.entityId);
+    const storage = CARDINALITY_TO_STORAGE[p.cardinality || "many"];
 
     if (storage === "containment") {
       addLinkToEntity(schema, toId, {
-        label: state.concepts.find((c) => c.id === link.fromConceptId)?.label || "Item",
+        label: sourceConcept?.label || "Item",
         targetId: fromId,
         storage: "containment",
       });
@@ -405,6 +401,6 @@ function blankWorkspace(current) {
 export function summarizeBrainstorm(state) {
   const items = itemConcepts(state);
   const scalars = scalarConcepts(state);
-  const links = state.links || [];
-  return { itemCount: items.length, scalarCount: scalars.length, linkCount: links.length };
+  const linkCount = state.placements.filter((p) => isRecordLinkPlacement(p)).length;
+  return { itemCount: items.length, scalarCount: scalars.length, linkCount };
 }

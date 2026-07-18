@@ -1,7 +1,8 @@
-/** Brainstorm flow UI — Setup → Link → Review → Tabs. */
+/** Brainstorm flow UI — Build → Review → Tabs. */
 
 import {
-  addLink,
+  availableRecordLinks,
+  CARDINALITY_LABELS,
   commitSuggestedKinds,
   compileToSchema,
   createBrainstormState,
@@ -11,15 +12,15 @@ import {
   FORMAT_OPTIONS,
   GHOST_CHIPS,
   itemConcepts,
-  linksOnRecord,
   parseChipInput,
+  placeRecordLink,
   placeScalar,
   promoteToItem,
-  ensureTitleDetailOnRecord,
-  recordHasTitleLike,
-  removeLink,
+  recordIdentityLabel,
+  recordsOnRecord,
+  removeConcept,
+  removeRecordLink,
   scalarsOnRecord,
-  scalarConcepts,
   stepBlockedReason,
   stepReady,
   STEP_COPY,
@@ -29,13 +30,7 @@ import {
 } from "./brainstorm.js";
 import { renderWorkspaceTabsPanel } from "./workspace-tabs-panel.js";
 
-const STEPS = ["setup", "link", "review", "tabs"];
-
-const CARDINALITY_LABELS = {
-  many: { label: "Many", hint: "Can pick several" },
-  one: { label: "One", hint: "At most one" },
-  owned: { label: "Owned by", hint: "Belongs inside" },
-};
+const STEPS = ["setup", "review", "tabs"];
 
 export function mountBrainstormFlow({
   container,
@@ -115,7 +110,6 @@ export function mountBrainstormFlow({
     canvas.className = "brainstorm-canvas brainstorm-canvas--" + step;
 
     if (step === "setup") renderSetup(canvas);
-    else if (step === "link") renderLink(canvas);
     else if (step === "review") renderReview(canvas);
     else if (step === "tabs") renderTabs(canvas);
   }
@@ -186,6 +180,36 @@ export function mountBrainstormFlow({
     });
   }
 
+  function bindDragPayload(el, payload) {
+    el.draggable = true;
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/brainstorm-payload", payload);
+    });
+  }
+
+  function handleDropOnCard(card, itemId, e) {
+    e.preventDefault();
+    card.classList.remove("brainstorm-record-card--dragover");
+    const payload = e.dataTransfer.getData("text/brainstorm-payload");
+    if (!payload) return;
+    if (payload.startsWith("scalar:")) {
+      const conceptId = payload.slice(7);
+      const concept = state.concepts.find((c) => c.id === conceptId);
+      if (concept) {
+        placeScalar(state, conceptId, itemId, suggestFieldType(concept.label));
+        render();
+      }
+      return;
+    }
+    if (payload.startsWith("record:")) {
+      const conceptId = payload.slice(7);
+      if (conceptId === itemId) return;
+      const res = placeRecordLink(state, itemId, conceptId, "many");
+      if (res.error) alert(res.error);
+      else render();
+    }
+  }
+
   function renderConceptRow(concept) {
     const row = document.createElement("div");
     row.className = "brainstorm-concept-row";
@@ -226,21 +250,20 @@ export function mountBrainstormFlow({
     remove.textContent = "×";
     remove.addEventListener("click", (e) => {
       e.stopPropagation();
-      state.concepts = state.concepts.filter((x) => x.id !== concept.id);
-      state.placements = state.placements.filter((p) => p.conceptId !== concept.id);
-      state.links = (state.links || []).filter(
-        (l) => l.fromConceptId !== concept.id && l.toConceptId !== concept.id
-      );
+      removeConcept(state, concept.id);
       render();
     });
 
     if (kind === "scalar" && unplacedScalars(state).some((c) => c.id === concept.id)) {
       row.classList.add("brainstorm-concept-row--draggable");
-      row.draggable = true;
+      bindDragPayload(row, `scalar:${concept.id}`);
       row.title = "Drag onto a record below";
-      row.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/concept-id", concept.id);
-      });
+    }
+
+    if (kind === "item") {
+      row.classList.add("brainstorm-concept-row--draggable");
+      bindDragPayload(row, `record:${concept.id}`);
+      row.title = "Drag onto another record to store it as a value";
     }
 
     row.append(label, toggle, remove);
@@ -256,7 +279,7 @@ export function mountBrainstormFlow({
     const input = document.createElement("input");
     input.type = "text";
     input.className = "brainstorm-input";
-    input.placeholder = "Type a field and press Enter…";
+    input.placeholder = "Type a concept and press Enter…";
     input.autocomplete = "off";
     bindConceptInput(input);
     inputRow.appendChild(input);
@@ -279,7 +302,9 @@ export function mountBrainstormFlow({
     const chipArea = document.createElement("div");
     chipArea.className = "brainstorm-chips brainstorm-setup-chips";
     if (!state.concepts.length) {
-      chipArea.appendChild(el("p", "muted brainstorm-chips-empty", "Brainstormed fields appear here."));
+      chipArea.appendChild(
+        el("p", "muted brainstorm-chips-empty", "Concepts you add appear here.")
+      );
     } else {
       state.concepts.forEach((c) => chipArea.appendChild(renderConceptRow(c)));
     }
@@ -288,14 +313,18 @@ export function mountBrainstormFlow({
     const hints = document.createElement("p");
     hints.className = "brainstorm-setup-hint muted";
     hints.textContent =
-      "Records are things you track many of (Movie, Theater). Details are values on a record (Title, Date, Rating).";
+      "Records are things you track many of (Teacher, Class). Details are plain values (bio, due date). Add another record as a value to connect them.";
     page.appendChild(hints);
 
     const placeSection = document.createElement("section");
     placeSection.className = "brainstorm-setup-place";
     if (!itemConcepts(state).length) {
       placeSection.appendChild(
-        el("p", "muted brainstorm-setup-place-hint", "Mark at least one field as a Record to place details.")
+        el(
+          "p",
+          "muted brainstorm-setup-place-hint",
+          "Mark at least one concept as a Record to start adding values."
+        )
       );
     } else {
       renderPlace(placeSection);
@@ -313,140 +342,6 @@ export function mountBrainstormFlow({
     }, 0);
   }
 
-  function renderDump(root) {
-    const chipArea = document.createElement("div");
-    chipArea.className = "brainstorm-chips";
-
-    if (!state.concepts.length) {
-      const ghosts = document.createElement("div");
-      ghosts.className = "brainstorm-ghosts";
-      GHOST_CHIPS.forEach((label) => {
-        const g = document.createElement("button");
-        g.type = "button";
-        g.className = "brainstorm-chip brainstorm-chip--ghost";
-        g.textContent = label;
-        g.addEventListener("click", () => addConcepts([label]));
-        ghosts.appendChild(g);
-      });
-      chipArea.appendChild(ghosts);
-    }
-
-    state.concepts.forEach((c) => {
-      chipArea.appendChild(renderChip(c, { removable: true }));
-    });
-
-    const inputRow = document.createElement("div");
-    inputRow.className = "brainstorm-input-row";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "brainstorm-input";
-    input.placeholder = "Add another…";
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === ",") {
-        e.preventDefault();
-        const labels = parseChipInput(input.value);
-        if (labels.length) {
-          addConcepts(labels);
-          input.value = "";
-        }
-      }
-    });
-    input.addEventListener("paste", (e) => {
-      const text = e.clipboardData?.getData("text") || "";
-      if (text.includes("\n") || text.includes(",")) {
-        e.preventDefault();
-        addConcepts(parseChipInput(text));
-      }
-    });
-    inputRow.appendChild(input);
-    root.append(chipArea, inputRow);
-    setTimeout(() => input.focus(), 0);
-  }
-
-  function renderChip(concept, { removable = false, extra = null } = {}) {
-    const chip = document.createElement("span");
-    chip.className = "brainstorm-chip";
-    chip.dataset.id = concept.id;
-    chip.textContent = concept.label;
-    if (removable) {
-      const x = document.createElement("button");
-      x.type = "button";
-      x.className = "brainstorm-chip-remove";
-      x.setAttribute("aria-label", "Remove");
-      x.textContent = "×";
-      x.addEventListener("click", () => {
-        state.concepts = state.concepts.filter((c) => c.id !== concept.id);
-        state.placements = state.placements.filter((p) => p.conceptId !== concept.id);
-        state.links = (state.links || []).filter(
-          (l) => l.fromConceptId !== concept.id && l.toConceptId !== concept.id
-        );
-        render();
-      });
-      chip.appendChild(x);
-    }
-    if (extra) chip.appendChild(extra);
-    return chip;
-  }
-
-  function renderSort(root) {
-    const progress = document.createElement("p");
-    progress.className = "brainstorm-progress muted";
-    const items = itemConcepts(state).length;
-    const scalars = scalarConcepts(state).length;
-    const unset = state.concepts.filter((c) => c.kind === "unset").length;
-    progress.textContent =
-      unset > 0
-        ? `${state.concepts.length} concepts — pick Record or Detail for each`
-        : `${items} record${items === 1 ? "" : "s"} · ${scalars} detail${scalars === 1 ? "" : "s"} — looking good`;
-
-    const list = document.createElement("div");
-    list.className = "brainstorm-sort-list";
-
-    state.concepts.forEach((c) => {
-      const row = document.createElement("div");
-      row.className = "brainstorm-sort-row";
-
-      const label = document.createElement("span");
-      label.className = "brainstorm-sort-label";
-      label.textContent = c.label;
-
-      const toggle = document.createElement("div");
-      toggle.className = "brainstorm-toggle";
-      toggle.setAttribute("role", "group");
-
-      const kind = effectiveKind(c);
-
-      ["item", "scalar"].forEach((k) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className =
-          "brainstorm-toggle-btn" + (kind === k ? " brainstorm-toggle-btn--active" : "");
-        btn.textContent = k === "item" ? "Record" : "Detail";
-        btn.title = k === "item" ? "You'll have many of these" : "Lives on a record";
-        btn.addEventListener("click", () => {
-          if (k === "item" && c.kind === "scalar") promoteToItem(state, c.id);
-          else if (k === "scalar" && c.kind === "item") {
-            const warnings = demoteToScalar(state, c.id);
-            if (warnings.length && !confirm(warnings.join("\n"))) return;
-          }
-          c.kind = k;
-          render();
-        });
-        toggle.appendChild(btn);
-      });
-
-      row.append(label, toggle);
-      list.appendChild(row);
-    });
-
-    const hints = document.createElement("div");
-    hints.className = "brainstorm-sort-hints muted";
-    hints.innerHTML =
-      "<span>Records: Note, Tag, Student, Class…</span><span>Details: title, description, due date…</span>";
-
-    root.append(progress, list, hints);
-  }
-
   function renderPlace(root) {
     const unplaced = unplacedScalars(state);
     const layout = document.createElement("div");
@@ -455,7 +350,7 @@ export function mountBrainstormFlow({
     const tray = document.createElement("aside");
     tray.className = "brainstorm-tray";
     const trayHead = document.createElement("h3");
-    trayHead.textContent = "Details";
+    trayHead.textContent = "Unplaced details";
     tray.appendChild(trayHead);
 
     if (!unplaced.length) {
@@ -464,12 +359,8 @@ export function mountBrainstormFlow({
       unplaced.forEach((c) => {
         const pill = document.createElement("div");
         pill.className = "brainstorm-detail-pill";
-        pill.draggable = true;
-        pill.dataset.conceptId = c.id;
         pill.textContent = c.label;
-        pill.addEventListener("dragstart", (e) => {
-          e.dataTransfer.setData("text/concept-id", c.id);
-        });
+        bindDragPayload(pill, `scalar:${c.id}`);
         pill.addEventListener("click", () => showPlaceMenu(c));
         tray.appendChild(pill);
       });
@@ -490,16 +381,7 @@ export function mountBrainstormFlow({
       card.addEventListener("dragleave", () => {
         card.classList.remove("brainstorm-record-card--dragover");
       });
-      card.addEventListener("drop", (e) => {
-        e.preventDefault();
-        card.classList.remove("brainstorm-record-card--dragover");
-        const conceptId = e.dataTransfer.getData("text/concept-id");
-        const concept = state.concepts.find((c) => c.id === conceptId);
-        if (concept) {
-          placeScalar(state, conceptId, item.id, suggestFieldType(concept.label));
-          render();
-        }
-      });
+      card.addEventListener("drop", (e) => handleDropOnCard(card, item.id, e));
 
       const cardTitle = document.createElement("h3");
       cardTitle.textContent = item.label;
@@ -508,50 +390,34 @@ export function mountBrainstormFlow({
       const fields = document.createElement("div");
       fields.className = "brainstorm-record-fields";
 
+      const identity = document.createElement("div");
+      identity.className = "brainstorm-value-row brainstorm-value-row--identity";
+      const identityName = document.createElement("span");
+      identityName.className = "brainstorm-value-name";
+      identityName.textContent = recordIdentityLabel(item);
+      const identityMeta = document.createElement("span");
+      identityMeta.className = "brainstorm-value-meta muted";
+      identityMeta.textContent = "Short text";
+      identity.append(identityName, identityMeta);
+      fields.appendChild(identity);
+
       scalarsOnRecord(state, item.id).forEach(({ placement, concept }) => {
-        const field = document.createElement("div");
-        field.className = "brainstorm-placed-detail";
-
-        const name = document.createElement("span");
-        name.textContent = concept.label;
-
-        const fmt = document.createElement("select");
-        fmt.className = "brainstorm-format-select";
-        FORMAT_OPTIONS.forEach((opt) => {
-          const o = document.createElement("option");
-          o.value = opt.type;
-          o.textContent = opt.label;
-          o.selected = placement.fieldType === opt.type;
-          fmt.appendChild(o);
-        });
-        fmt.addEventListener("change", () => {
-          placement.fieldType = fmt.value;
-        });
-
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "brainstorm-chip-remove";
-        remove.textContent = "×";
-        remove.addEventListener("click", () => {
-          unplaceScalar(state, concept.id);
-          render();
-        });
-
-        field.append(name, fmt, remove);
-        fields.appendChild(field);
+        fields.appendChild(renderScalarValueRow(item.id, placement, concept));
       });
 
-      if (!recordHasTitleLike(state, item.id)) {
-        const hint = document.createElement("button");
-        hint.type = "button";
-        hint.className = "brainstorm-card-hint btn btn-sm btn-link";
-        hint.textContent = "Add a title or name detail";
-        hint.addEventListener("click", () => {
-          ensureTitleDetailOnRecord(state, item.id);
-          render();
-        });
-        fields.appendChild(hint);
-      }
+      recordsOnRecord(state, item.id).forEach(({ placement, concept }) => {
+        fields.appendChild(renderRecordValueRow(item.id, placement, concept));
+      });
+
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "btn btn-sm brainstorm-add-value";
+      addBtn.textContent = "Add value…";
+      addBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showAddValueMenu(item.id, addBtn);
+      });
+      fields.appendChild(addBtn);
 
       card.appendChild(fields);
       grid.appendChild(card);
@@ -561,123 +427,173 @@ export function mountBrainstormFlow({
     root.appendChild(layout);
   }
 
+  function renderScalarValueRow(entityId, placement, concept) {
+    const field = document.createElement("div");
+    field.className = "brainstorm-value-row brainstorm-value-row--detail";
+
+    const name = document.createElement("span");
+    name.className = "brainstorm-value-name";
+    name.textContent = concept.label;
+
+    const fmt = document.createElement("select");
+    fmt.className = "brainstorm-format-select";
+    FORMAT_OPTIONS.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt.type;
+      o.textContent = opt.label;
+      o.selected = placement.fieldType === opt.type;
+      fmt.appendChild(o);
+    });
+    fmt.addEventListener("change", () => {
+      placement.fieldType = fmt.value;
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "brainstorm-chip-remove";
+    remove.setAttribute("aria-label", "Remove");
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      unplaceScalar(state, concept.id);
+      render();
+    });
+
+    field.append(name, fmt, remove);
+    return field;
+  }
+
+  function renderRecordValueRow(entityId, placement, concept) {
+    const field = document.createElement("div");
+    field.className = "brainstorm-value-row brainstorm-value-row--record";
+
+    const name = document.createElement("span");
+    name.className = "brainstorm-value-name";
+    name.textContent = concept.label;
+
+    const badge = document.createElement("span");
+    badge.className = "brainstorm-value-kind muted";
+    badge.textContent = "Record";
+
+    const cardSel = document.createElement("select");
+    cardSel.className = "brainstorm-cardinality-select";
+    Object.entries(CARDINALITY_LABELS).forEach(([k, v]) => {
+      const o = document.createElement("option");
+      o.value = k;
+      o.textContent = `${v.label} — ${v.hint}`;
+      o.selected = (placement.cardinality || "many") === k;
+      cardSel.appendChild(o);
+    });
+    cardSel.addEventListener("change", () => {
+      placement.cardinality = cardSel.value;
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "brainstorm-chip-remove";
+    remove.setAttribute("aria-label", "Remove");
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      removeRecordLink(state, entityId, concept.id);
+      render();
+    });
+
+    field.append(name, badge, cardSel, remove);
+    return field;
+  }
+
   function showPlaceMenu(concept) {
     const items = itemConcepts(state);
     if (!items.length) return;
-    const pick = items.length === 1 ? items[0] : null;
-    if (pick) {
-      placeScalar(state, concept.id, pick.id, suggestFieldType(concept.label));
+    if (items.length === 1) {
+      placeScalar(state, concept.id, items[0].id, suggestFieldType(concept.label));
       render();
       return;
     }
-    const menu = document.createElement("div");
-    menu.className = "brainstorm-place-menu";
-    items.forEach((item) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-sm";
-      btn.textContent = item.label;
-      btn.addEventListener("click", () => {
-        placeScalar(state, concept.id, item.id, suggestFieldType(concept.label));
-        menu.remove();
+    showPickerMenu(
+      "Place on which record?",
+      items.map((item) => ({
+        label: item.label,
+        onPick: () => {
+          placeScalar(state, concept.id, item.id, suggestFieldType(concept.label));
+          render();
+        },
+      }))
+    );
+  }
+
+  function showAddValueMenu(entityId, anchor) {
+    const detailItems = unplacedScalars(state).map((concept) => ({
+      label: concept.label,
+      onPick: () => {
+        placeScalar(state, concept.id, entityId, suggestFieldType(concept.label));
         render();
+      },
+    }));
+    const recordItems = availableRecordLinks(state, entityId).map((concept) => ({
+      label: concept.label,
+      onPick: () => {
+        const res = placeRecordLink(state, entityId, concept.id, "many");
+        if (res.error) alert(res.error);
+        else render();
+      },
+    }));
+
+    const sections = [];
+    if (detailItems.length) sections.push({ title: "Details", items: detailItems });
+    if (recordItems.length) sections.push({ title: "Records", items: recordItems });
+    if (!sections.length) {
+      alert("Add more concepts above, or place all details first.");
+      return;
+    }
+    showSectionedMenu(anchor, sections);
+  }
+
+  function showPickerMenu(title, items) {
+    showSectionedMenu(canvas, [{ title, items }]);
+  }
+
+  function showSectionedMenu(anchor, sections) {
+    document.querySelectorAll(".brainstorm-value-menu").forEach((m) => m.remove());
+    const menu = document.createElement("div");
+    menu.className = "brainstorm-value-menu";
+    sections.forEach((section) => {
+      const head = document.createElement("p");
+      head.className = "brainstorm-value-menu-head muted";
+      head.textContent = section.title;
+      menu.appendChild(head);
+      section.items.forEach((item) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "brainstorm-value-menu-btn";
+        btn.textContent = item.label;
+        btn.addEventListener("click", () => {
+          menu.remove();
+          item.onPick();
+        });
+        menu.appendChild(btn);
       });
-      menu.appendChild(btn);
     });
-    canvas.appendChild(menu);
+
+    if (anchor === canvas) {
+      menu.classList.add("brainstorm-value-menu--centered");
+      canvas.appendChild(menu);
+    } else {
+      const rect = anchor.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      menu.style.top = `${rect.bottom - canvasRect.top + 4}px`;
+      menu.style.left = `${Math.max(0, rect.left - canvasRect.left)}px`;
+      canvas.appendChild(menu);
+    }
+
     setTimeout(() => {
       document.addEventListener(
         "click",
-        () => menu.remove(),
+        (e) => {
+          if (!menu.contains(e.target) && e.target !== anchor) menu.remove();
+        },
         { once: true }
       );
     }, 0);
-  }
-
-  function renderLink(root) {
-    const grid = document.createElement("div");
-    grid.className = "brainstorm-record-grid";
-
-    itemConcepts(state).forEach((item) => {
-      const card = document.createElement("div");
-      card.className = "brainstorm-record-card";
-
-      const cardTitle = document.createElement("h3");
-      cardTitle.textContent = item.label;
-      card.appendChild(cardTitle);
-
-      const existing = document.createElement("div");
-      existing.className = "brainstorm-links-list";
-
-      linksOnRecord(state, item.id).forEach((link) => {
-        const target = state.concepts.find((c) => c.id === link.toConceptId);
-        if (!target) return;
-        const row = document.createElement("div");
-        row.className = "brainstorm-link-row";
-
-        const label = document.createElement("span");
-        label.textContent = target.label;
-
-        const cardSel = document.createElement("select");
-        cardSel.className = "brainstorm-cardinality-select";
-        Object.entries(CARDINALITY_LABELS).forEach(([k, v]) => {
-          const o = document.createElement("option");
-          o.value = k;
-          o.textContent = `${v.label} — ${v.hint}`;
-          o.selected = (link.cardinality || "many") === k;
-          cardSel.appendChild(o);
-        });
-        cardSel.addEventListener("change", () => {
-          link.cardinality = cardSel.value;
-        });
-
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "brainstorm-chip-remove";
-        remove.textContent = "×";
-        remove.addEventListener("click", () => {
-          removeLink(state, item.id, link.toConceptId);
-          render();
-        });
-
-        row.append(label, cardSel, remove);
-        existing.appendChild(row);
-      });
-
-      card.appendChild(existing);
-
-      const addRow = document.createElement("div");
-      addRow.className = "brainstorm-link-add";
-      const sel = document.createElement("select");
-      sel.innerHTML = "<option value=''>Connect another record…</option>";
-      itemConcepts(state)
-        .filter((c) => c.id !== item.id)
-        .forEach((c) => {
-          const linked = linksOnRecord(state, item.id).some(
-            (l) => l.toConceptId === c.id
-          );
-          if (linked) return;
-          const o = document.createElement("option");
-          o.value = c.id;
-          o.textContent = c.label;
-          sel.appendChild(o);
-        });
-      const addBtn = document.createElement("button");
-      addBtn.type = "button";
-      addBtn.className = "btn btn-sm";
-      addBtn.textContent = "Add";
-      addBtn.addEventListener("click", () => {
-        if (!sel.value) return;
-        const res = addLink(state, item.id, sel.value, "many");
-        if (res.error) alert(res.error);
-        else render();
-      });
-      addRow.append(sel, addBtn);
-      card.appendChild(addRow);
-      grid.appendChild(card);
-    });
-
-    root.appendChild(grid);
   }
 
   function renderReview(root) {
@@ -690,29 +606,37 @@ export function mountBrainstormFlow({
     items.innerHTML = "<h3>Records</h3>";
     const itemList = document.createElement("ul");
     itemList.className = "brainstorm-review-list";
-    Object.values(schema.entity_types || {}).forEach((ent) => {
+
+    itemConcepts(state).forEach((concept) => {
       const li = document.createElement("li");
-      const fields = Object.entries(ent.fields || {})
-        .filter(([k, f]) => k !== "id" && f.type !== "foreign_key")
-        .map(([k, f]) => f.editor?.header || k);
-      li.innerHTML = `<strong>${escapeHtml(ent.label)}</strong> <span class="muted">${escapeHtml(fields.join(", ") || "title")}</span>`;
+      const valueParts = [recordIdentityLabel(concept)];
+      scalarsOnRecord(state, concept.id).forEach(({ concept: detail }) => {
+        valueParts.push(detail.label);
+      });
+      recordsOnRecord(state, concept.id).forEach(({ concept: linked }) => {
+        valueParts.push(linked.label);
+      });
+      li.innerHTML = `<strong>${escapeHtml(concept.label)}</strong> <span class="muted">stores ${escapeHtml(valueParts.join(", "))}</span>`;
       itemList.appendChild(li);
     });
     items.appendChild(itemList);
 
     const links = document.createElement("section");
     links.className = "brainstorm-review-section";
-    links.innerHTML = "<h3>Inferred links</h3>";
+    links.innerHTML = "<h3>Connections</h3>";
     const linkList = document.createElement("ul");
     linkList.className = "brainstorm-review-list";
-    if (!(schema.relationships || []).length) {
-      linkList.innerHTML = "<li class='muted'>No links yet — you can add them in the next step.</li>";
+    const linkPlacements = state.placements.filter((p) => p.linkTargetId);
+    if (!linkPlacements.length) {
+      linkList.innerHTML =
+        "<li class='muted'>No record links yet — add another record as a value on a card.</li>";
     } else {
-      (schema.relationships || []).forEach((rel) => {
-        const from = schema.entity_types[rel.from]?.label || rel.from;
-        const to = schema.entity_types[rel.to]?.label || rel.to;
+      linkPlacements.forEach((p) => {
+        const from = state.concepts.find((c) => c.id === p.entityId);
+        const to = state.concepts.find((c) => c.id === p.linkTargetId);
+        const card = CARDINALITY_LABELS[p.cardinality || "many"];
         const li = document.createElement("li");
-        li.innerHTML = `<strong>${escapeHtml(from)}</strong> ↔ <strong>${escapeHtml(to)}</strong> <span class="muted">${escapeHtml(rel.storage)}</span>`;
+        li.innerHTML = `<strong>${escapeHtml(from?.label || "?")}</strong> stores <strong>${escapeHtml(to?.label || "?")}</strong> <span class="muted">${escapeHtml(card?.label || "")}</span>`;
         linkList.appendChild(li);
       });
     }
