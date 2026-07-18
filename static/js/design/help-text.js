@@ -3,15 +3,15 @@
 export const PAGE_INTRO = {
   title: "Design",
   lead:
-    "Build your workspace from Items — add the information each stores, connect them, then choose how they appear.",
-  note: "Changes stay in Design until you Apply Changes.",
+    "Build your workspace from Items — add fields, link Items together, then choose how they appear.",
+  note: "Links are fields you add on an Item. Changes stay in Design until you Apply Changes.",
 };
 
 export const PANEL_HELP = {
   entities:
     "Items are the kinds of records you track — each becomes a table in your database.",
   connections:
-    "Connections describe how Items relate: one-to-many, many-to-many, or an optional link.",
+    "Links are created when you add another Item as a field — many-to-many, one-to-one, or owned-by.",
   views:
     "Tabs in Workspace. Pick the primary Item, connected Items (joins), and which columns appear — editable, read-only, or chips for many-to-many links.",
 };
@@ -68,7 +68,7 @@ export const VIEW_HELP = {
 };
 
 export const FIELD_HELP =
-  "Choose a simple value, or link to other Items (you create the Item type — nothing is auto-created).";
+  "Choose a simple value, or link to another Item as a field (you pick many, one, or owned-by).";
 
 export const INSPECTOR_HELP =
   "Select an Item on the map to edit its values and links. Apply Changes makes the workspace live.";

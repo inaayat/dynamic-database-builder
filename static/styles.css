@@ -2559,3 +2559,406 @@ button.map-chip:hover,
   font-size: var(--fs-sm);
   padding: 0.25rem 0;
 }
+
+/* ── Brainstorm flow ───────────────────────────────────────── */
+
+.brainstorm-shell {
+  --brainstorm-bg: #f7f4ef;
+  --brainstorm-surface: #fffdf9;
+  --brainstorm-accent: #1a8a7d;
+  --brainstorm-accent-soft: #e3f4f1;
+  --brainstorm-chip: #f0ebe3;
+  --brainstorm-record: #ffffff;
+  --brainstorm-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  background:
+    linear-gradient(180deg, var(--brainstorm-bg) 0%, #f3efe8 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem 1.35rem 1rem;
+  min-height: 420px;
+  position: relative;
+  overflow: hidden;
+}
+
+.brainstorm-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.03) 1px, transparent 0);
+  background-size: 18px 18px;
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.brainstorm-head,
+.brainstorm-canvas,
+.brainstorm-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.brainstorm-brand {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.brainstorm-title {
+  margin: 0;
+  font-family: var(--brainstorm-display);
+  font-size: 1.65rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.brainstorm-coach {
+  margin: 0.35rem 0 1rem;
+  font-size: var(--fs-md);
+  color: var(--muted);
+  max-width: 42rem;
+}
+
+.brainstorm-canvas {
+  min-height: 260px;
+  margin-bottom: 1rem;
+}
+
+.brainstorm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  min-height: 180px;
+  padding: 1rem;
+  background: var(--brainstorm-surface);
+  border: 1px dashed color-mix(in srgb, var(--brainstorm-accent) 25%, var(--border));
+  border-radius: 12px;
+}
+
+.brainstorm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.65rem;
+  background: var(--brainstorm-chip);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: var(--fs-md);
+  animation: brainstorm-chip-in 0.2s ease-out;
+}
+
+@keyframes brainstorm-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.brainstorm-chip--ghost {
+  opacity: 0.55;
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+
+.brainstorm-chip--ghost:hover {
+  opacity: 0.85;
+  border-color: var(--brainstorm-accent);
+}
+
+.brainstorm-chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 0.15rem;
+  line-height: 1;
+  font-size: 1rem;
+}
+
+.brainstorm-chip-remove:hover {
+  color: var(--text);
+}
+
+.brainstorm-ghosts {
+  display: contents;
+}
+
+.brainstorm-input-row {
+  margin-top: 0.75rem;
+}
+
+.brainstorm-input {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--brainstorm-surface);
+  font-size: var(--fs-md);
+}
+
+.brainstorm-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--brainstorm-accent) 35%, transparent);
+  border-color: var(--brainstorm-accent);
+}
+
+.brainstorm-sort-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.brainstorm-sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--brainstorm-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.brainstorm-sort-label {
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.brainstorm-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--brainstorm-chip);
+}
+
+.brainstorm-toggle-btn {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.7rem;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.brainstorm-toggle-btn--active {
+  background: var(--brainstorm-accent-soft);
+  color: var(--brainstorm-accent);
+  font-weight: 600;
+}
+
+.brainstorm-sort-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: var(--fs-sm);
+}
+
+.brainstorm-progress {
+  margin: 0 0 0.75rem;
+  font-size: var(--fs-sm);
+}
+
+.brainstorm-place-layout {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .brainstorm-place-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.brainstorm-tray {
+  padding: 0.75rem;
+  background: var(--brainstorm-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.brainstorm-tray h3 {
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.brainstorm-detail-pill {
+  display: block;
+  padding: 0.35rem 0.55rem;
+  margin-bottom: 0.35rem;
+  background: var(--brainstorm-chip);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  cursor: grab;
+}
+
+.brainstorm-record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.brainstorm-record-card {
+  padding: 0.85rem;
+  background: var(--brainstorm-record);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.brainstorm-record-card h3 {
+  margin: 0 0 0.55rem;
+  font-size: var(--fs-lg);
+  font-family: var(--brainstorm-display);
+}
+
+.brainstorm-record-card--dragover {
+  border-color: var(--brainstorm-accent);
+  box-shadow: 0 0 0 2px var(--brainstorm-accent-soft);
+}
+
+.brainstorm-record-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.brainstorm-placed-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.45rem;
+  background: var(--brainstorm-chip);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  animation: brainstorm-chip-in 0.2s ease-out;
+}
+
+.brainstorm-format-select,
+.brainstorm-cardinality-select {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  padding: 0.15rem 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.brainstorm-card-hint {
+  margin: 0.25rem 0 0;
+  font-size: var(--fs-xs);
+}
+
+.brainstorm-link-row,
+.brainstorm-link-add {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: var(--fs-sm);
+}
+
+.brainstorm-link-add select {
+  flex: 1;
+  min-width: 0;
+}
+
+.brainstorm-review {
+  display: grid;
+  gap: 1rem;
+}
+
+.brainstorm-review-section h3 {
+  margin: 0 0 0.45rem;
+  font-size: var(--fs-md);
+}
+
+.brainstorm-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.brainstorm-review-list li {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+  background: var(--brainstorm-surface);
+  font-size: var(--fs-md);
+}
+
+.brainstorm-tabs-panel {
+  background: var(--brainstorm-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.brainstorm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.brainstorm-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.brainstorm-footer-reason {
+  font-size: var(--fs-sm);
+  flex: 1;
+}
+
+.brainstorm-shell .btn-primary.brainstorm-cta {
+  background: var(--brainstorm-accent);
+  border-color: var(--brainstorm-accent);
+}
+
+.brainstorm-shell .btn-primary.brainstorm-cta:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.brainstorm-escape {
+  margin-right: auto;
+}
+
+.brainstorm-place-menu {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}

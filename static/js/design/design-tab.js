@@ -4,6 +4,7 @@ import {
   loadPackage,
   validateSchema,
 } from "../schema-client.js";
+import { mountBrainstormFlow } from "./brainstorm-flow.js";
 import { PAGE_INTRO, helpParagraph } from "./help-text.js";
 import { renderStudioItemEditor } from "./item-editor.js";
 import { renderStudioWorkspacePanel } from "./studio-workspace-panel.js";
@@ -23,6 +24,8 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   let showMap = localStorage.getItem(MAP_VISIBLE_KEY) === "true";
   let selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
   let startedBlank = false;
+  let brainstormMode = false;
+  let brainstormApi = null;
   let mapApi = null;
 
   const intro = document.createElement("div");
@@ -35,9 +38,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   howDetails.innerHTML = `
     <summary>How Design works</summary>
     <ol class="design-how-list">
-      <li><strong>Items</strong> — kinds of records you track (fields on the left)</li>
-      <li><strong>Fields</strong> — values on an Item; pick an Item type to link</li>
-      <li><strong>Workspace tabs</strong> — layout on the right; map is optional</li>
+      <li><strong>Items</strong> — kinds of records you track</li>
+      <li><strong>Fields</strong> — values on an Item, or link to another Item</li>
+      <li><strong>Workspace tabs</strong> — layout in Workspace; links show as joins/chips</li>
       <li><strong>Apply Changes</strong> — make it live</li>
     </ol>
   `;
@@ -132,7 +135,33 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       return;
     }
 
+    if (brainstormMode) {
+      renderBrainstorm();
+      return;
+    }
+
     renderStudio();
+  }
+
+  function renderBrainstorm() {
+    intro.hidden = true;
+    brainstormApi = mountBrainstormFlow({
+      container: main,
+      baseSchema: workingSchema,
+      onSchemaChange(updated) {
+        workingSchema = updated;
+        onSchemaChange(updated);
+      },
+      onOpenStudio(updated) {
+        brainstormMode = false;
+        intro.hidden = false;
+        workingSchema = updated;
+        selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
+        startedBlank = true;
+        onSchemaChange(workingSchema);
+        renderMain();
+      },
+    });
   }
 
   async function doApply() {
@@ -313,13 +342,25 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   function renderEmptyState() {
     const empty = document.createElement("div");
     empty.className = "design-empty";
-    empty.innerHTML = `<h3>Set up your workspace</h3><p class="design-help">Start from a Notes template, or create Item types and connect them in the studio.</p>`;
+    empty.innerHTML = `<h3>Set up your workspace</h3><p class="design-help">Brainstorm what you might track, start from a template, or open the studio directly.</p>`;
     const actions = document.createElement("div");
     actions.className = "design-empty-actions";
+    const brainstormBtn = document.createElement("button");
+    brainstormBtn.type = "button";
+    brainstormBtn.className = "btn btn-primary";
+    brainstormBtn.textContent = "Brainstorm";
+    brainstormBtn.addEventListener("click", () => {
+      workingSchema = blankWorkspace(workingSchema);
+      startedBlank = true;
+      brainstormMode = true;
+      selectedEntityId = null;
+      onSchemaChange(workingSchema);
+      renderMain();
+    });
     const templateBtn = document.createElement("button");
     templateBtn.type = "button";
-    templateBtn.className = "btn btn-primary";
-    templateBtn.textContent = "Start from Notes template";
+    templateBtn.className = "btn";
+    templateBtn.textContent = "Use a template";
     templateBtn.addEventListener("click", async () => {
       try {
         const result = await loadPackage("tagged_knowledge_base");
@@ -327,24 +368,26 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         setSchema(workingSchema);
         selectedEntityId = Object.keys(workingSchema.entity_types)[0] || null;
         startedBlank = false;
+        brainstormMode = false;
         statusEl.textContent = "Notes template loaded";
         renderMain();
       } catch (err) {
         showMessages([formatErrorLine(err)], "error");
       }
     });
-    const blankBtn = document.createElement("button");
-    blankBtn.type = "button";
-    blankBtn.className = "btn";
-    blankBtn.textContent = "Start blank";
-    blankBtn.addEventListener("click", () => {
+    const studioBtn = document.createElement("button");
+    studioBtn.type = "button";
+    studioBtn.className = "btn";
+    studioBtn.textContent = "Open studio";
+    studioBtn.addEventListener("click", () => {
       workingSchema = blankWorkspace(workingSchema);
       startedBlank = true;
+      brainstormMode = false;
       selectedEntityId = null;
       onSchemaChange(workingSchema);
       renderMain();
     });
-    actions.append(templateBtn, blankBtn);
+    actions.append(brainstormBtn, templateBtn, studioBtn);
     empty.appendChild(actions);
     return empty;
   }

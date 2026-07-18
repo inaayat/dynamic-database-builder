@@ -1,4 +1,4 @@
-/** Guided setup wizard: Items → Info → Connections → Views → Apply. */
+/** Guided setup wizard: Items → Info → Views → Apply. */
 
 import {
   isPrimaryKey,
@@ -6,20 +6,17 @@ import {
 import {
   FIELD_HELP,
   PANEL_HELP,
-  STORAGE_HELP,
   storageLabel,
   helpParagraph,
 } from "./help-text.js";
 import { createView, promptAddInfo, promptAddItem, removeField } from "./design-actions.js";
-import { buildCustomConnection } from "./recipes.js";
 import { openModal } from "./modals.js";
 
 const STEPS = [
   { id: "entities", label: "1. Items", short: "What you track" },
   { id: "fields", label: "2. Info", short: "Values & links" },
-  { id: "connections", label: "3. Connections", short: "How they relate" },
-  { id: "views", label: "4. Views", short: "How you look at them" },
-  { id: "apply", label: "5. Apply", short: "Make it live" },
+  { id: "views", label: "3. Views", short: "How you look at them" },
+  { id: "apply", label: "4. Apply", short: "Make it live" },
 ];
 
 function friendlyType(type) {
@@ -64,7 +61,6 @@ export function renderSetupWizard({
     const current = STEPS[step];
     if (current.id === "entities") renderEntitiesStep(panel);
     else if (current.id === "fields") renderFieldsStep(panel);
-    else if (current.id === "connections") renderConnectionsStep(panel);
     else if (current.id === "views") renderViewsStep(panel);
     else renderApplyStep(panel);
     container.appendChild(panel);
@@ -205,7 +201,7 @@ export function renderSetupWizard({
         del.className = "btn-sm";
         del.textContent = "Remove";
         del.addEventListener("click", () => {
-          removeField(schema, entityId, fname);
+          removeField(schema, selectedEntityId, fname);
           emit();
         });
         li.appendChild(del);
@@ -223,151 +219,34 @@ export function renderSetupWizard({
       if (res) emit();
     });
     panel.appendChild(add);
+    renderInferredLinks(panel, schema);
   }
 
-  function renderConnectionsStep(panel) {
-    panel.appendChild(sectionTitle("Connections", PANEL_HELP.connections));
+  function renderInferredLinks(panel, schema) {
+    const h = document.createElement("h4");
+    h.className = "wizard-subhead";
+    h.textContent = "Inferred links";
+    panel.appendChild(h);
     panel.appendChild(
       helpParagraph(
-        "Start with suggested links based on your entities. Or create a custom connection."
+        "Links are created when you add another Item as a field on an Item. They appear here automatically."
       )
     );
 
-    const recipes = suggestConnections(schema);
-    if (recipes.length) {
-      const h = document.createElement("h4");
-      h.className = "wizard-subhead";
-      h.textContent = "Suggested for your workspace";
-      panel.appendChild(h);
-      const list = document.createElement("ul");
-      list.className = "wizard-list";
-      recipes.forEach((recipe) => {
-        const li = document.createElement("li");
-        li.className = "wizard-list-item recipe-item";
-        const main = document.createElement("div");
-        main.innerHTML = `<strong>${recipe.title}</strong> <span class="muted">${recipe.kindLabel}</span><p class="design-help">${recipe.description}</p>`;
-        li.appendChild(main);
-        if (recipe.alreadyAdded) {
-          const badge = document.createElement("span");
-          badge.className = "badge-done";
-          badge.textContent = "Added";
-          li.appendChild(badge);
-        } else {
-          const add = document.createElement("button");
-          add.type = "button";
-          add.className = "btn btn-sm";
-          add.textContent = "Add";
-          add.addEventListener("click", () => {
-            const rel = recipe.build({ mirror: recipe.suggestMirror });
-            schema.relationships = schema.relationships || [];
-            schema.relationships.push(rel);
-            emit();
-          });
-          li.appendChild(add);
-        }
-        list.appendChild(li);
-      });
-      panel.appendChild(list);
-    } else {
-      panel.appendChild(
-        helpParagraph("Add at least two Item types to see suggested connections.")
-      );
-    }
-
-    const h2 = document.createElement("h4");
-    h2.className = "wizard-subhead";
-    h2.textContent = "Your connections";
-    panel.appendChild(h2);
-
-    const existing = document.createElement("ul");
-    existing.className = "wizard-list";
+    const list = document.createElement("ul");
+    list.className = "wizard-list";
     (schema.relationships || []).forEach((rel) => {
       const li = document.createElement("li");
       li.className = "wizard-list-item";
       const from = schema.entity_types[rel.from]?.label || rel.from;
       const to = schema.entity_types[rel.to]?.label || rel.to;
       li.innerHTML = `<strong>${from} → ${to}</strong> <span class="muted">${storageLabel(rel.storage)}</span>`;
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "btn-sm";
-      del.textContent = "Remove";
-      del.addEventListener("click", () => {
-        schema.relationships = schema.relationships.filter((r) => r.id !== rel.id);
-        emit();
-      });
-      li.appendChild(del);
-      existing.appendChild(li);
+      list.appendChild(li);
     });
     if (!(schema.relationships || []).length) {
-      existing.innerHTML = `<li class="muted">No connections yet.</li>`;
+      list.innerHTML = `<li class="muted">No links yet — add another Item as a field to create one.</li>`;
     }
-    panel.appendChild(existing);
-
-    const custom = document.createElement("button");
-    custom.type = "button";
-    custom.className = "btn";
-    custom.textContent = "+ Custom connection";
-    custom.addEventListener("click", () => customConnectionModal());
-    panel.appendChild(custom);
-  }
-
-  async function customConnectionModal() {
-    const ids = Object.keys(schema.entity_types || {});
-    if (ids.length < 2) {
-      alert("Add at least two Item types first.");
-      return;
-    }
-    let storage = "junction";
-    const result = await openModal({
-      title: "Custom connection",
-      confirmLabel: "Create connection",
-      wide: true,
-      body(root) {
-        root.appendChild(helpParagraph("Which two things are related, and how?"));
-        root.appendChild(selectRow("From", "conn-from", ids, schema));
-        root.appendChild(selectRow("To", "conn-to", ids, schema, 1));
-
-        const cards = document.createElement("div");
-        cards.className = "choice-cards";
-        ["containment", "junction", "assignment"].forEach((id) => {
-          const help = STORAGE_HELP[id];
-          const card = document.createElement("button");
-          card.type = "button";
-          card.className = "choice-card" + (id === storage ? " selected" : "");
-          card.innerHTML = `<strong>${help.label}</strong><p>${help.summary}</p>`;
-          card.addEventListener("click", () => {
-            storage = id;
-            cards.querySelectorAll(".choice-card").forEach((c) => c.classList.remove("selected"));
-            card.classList.add("selected");
-          });
-          cards.appendChild(card);
-        });
-        root.appendChild(cards);
-
-        const mirror = document.createElement("label");
-        mirror.className = "design-form-row checkbox-row";
-        mirror.innerHTML =
-          '<input type="checkbox" id="conn-mirror"> Mirror links as text on the related record';
-        root.appendChild(mirror);
-      },
-      onConfirm(root) {
-        return {
-          from: root.querySelector("#conn-from").value,
-          to: root.querySelector("#conn-to").value,
-          storage,
-          mirror: root.querySelector("#conn-mirror").checked,
-        };
-      },
-    });
-    if (!result) return;
-    const rel = buildCustomConnection({ ...result, schema });
-    schema.relationships = schema.relationships || [];
-    if (schema.relationships.some((r) => r.id === rel.id)) {
-      alert("That connection already exists.");
-      return;
-    }
-    schema.relationships.push(rel);
-    emit();
+    panel.appendChild(list);
   }
 
   function renderViewsStep(panel) {
@@ -449,7 +328,7 @@ export function renderSetupWizard({
     summary.innerHTML = `
       <dt>Items</dt><dd>${entityCount}</dd>
       <dt>Fields</dt><dd>${fieldCount}</dd>
-      <dt>Connections</dt><dd>${relCount}</dd>
+      <dt>Links</dt><dd>${relCount}</dd>
       <dt>Views</dt><dd>${viewCount}</dd>
     `;
     panel.appendChild(summary);
