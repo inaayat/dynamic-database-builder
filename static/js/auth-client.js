@@ -1,13 +1,29 @@
-"""Client-side Neon Auth (Managed Better Auth) session + JWT for API calls."""
+/* Client-side Neon Auth via Better Auth HTTP API (no CDN SDK). */
 
-let authClient = null;
 let authUrl = null;
 let cachedToken = null;
 let tokenExpiresAt = 0;
 let currentUser = null;
 let ready = false;
+let authEnabled = false;
 
 const TOKEN_SKEW_MS = 60_000;
+
+function authFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has("Content-Type") && options.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  // Required by Neon Auth for trusted-domain checks
+  if (!headers.has("Origin")) {
+    headers.set("Origin", window.location.origin);
+  }
+  return fetch(`${authUrl}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+}
 
 export function isAuthReady() {
   return ready;
@@ -26,44 +42,56 @@ export async function loadAuthConfig() {
 export async function initAuth() {
   const config = await loadAuthConfig();
   if (!config.enabled || !config.authUrl) {
+    authEnabled = false;
     ready = true;
     currentUser = { id: "local-dev", email: "local@dev", name: "Local Dev" };
     return { enabled: false, user: currentUser };
   }
 
-  authUrl = config.authUrl;
-  const { createAuthClient } = await import(
-    "https://esm.sh/@neondatabase/neon-js@latest/auth"
-  );
-  authClient = createAuthClient(authUrl, {
-    fetchOptions: { credentials: "include" },
-  });
+  authEnabled = true;
+  authUrl = config.authUrl.replace(/\/$/, "");
 
-  const session = await authClient.getSession();
-  if (session?.data?.user) {
-    currentUser = session.data.user;
+  const session = await getSession();
+  if (session?.user) {
+    currentUser = session.user;
     await refreshToken();
   }
   ready = true;
   return { enabled: true, user: currentUser };
 }
 
+async function getSession() {
+  const res = await authFetch("/get-session", { method: "GET" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  // Better Auth may return { user, session } or { data: { user, session } }
+  if (data?.user) return data;
+  if (data?.data?.user) return data.data;
+  return null;
+}
+
 async function refreshToken() {
-  if (!authClient) return null;
-  const result = await authClient.token();
-  if (result?.error || !result?.data?.token) {
+  if (!authUrl) return null;
+  const res = await authFetch("/token", { method: "GET" });
+  if (!res.ok) {
     cachedToken = null;
     tokenExpiresAt = 0;
     return null;
   }
-  cachedToken = result.data.token;
-  // Neon JWTs expire in 15 minutes
+  const data = await res.json();
+  const token = data?.token || data?.data?.token;
+  if (!token) {
+    cachedToken = null;
+    tokenExpiresAt = 0;
+    return null;
+  }
+  cachedToken = token;
   tokenExpiresAt = Date.now() + 14 * 60_000;
   return cachedToken;
 }
 
 export async function getAccessToken() {
-  if (!authClient) return null;
+  if (!authEnabled) return null;
   if (cachedToken && Date.now() < tokenExpiresAt - TOKEN_SKEW_MS) {
     return cachedToken;
   }
@@ -71,42 +99,74 @@ export async function getAccessToken() {
 }
 
 export async function signUp({ email, password, name }) {
-  const result = await authClient.signUp.email({
-    email,
-    password,
-    name: name || email.split("@")[0] || "User",
+  const res = await authFetch("/sign-up/email", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      name: name || email.split("@")[0] || "User",
+    }),
   });
-  if (result?.error) throw new Error(result.error.message || "Sign up failed");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || data.error || `Sign up failed (${res.status})`);
+  }
   await afterAuth();
   return currentUser;
 }
 
 export async function signIn({ email, password }) {
-  const result = await authClient.signIn.email({ email, password });
-  if (result?.error) throw new Error(result.error.message || "Sign in failed");
+  const res = await authFetch("/sign-in/email", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || data.error || `Sign in failed (${res.status})`);
+  }
   await afterAuth();
   return currentUser;
 }
 
 export async function signInWithGoogle() {
-  const result = await authClient.signIn.social({
-    provider: "google",
-    callbackURL: window.location.origin + "/",
+  const callbackURL = `${window.location.origin}/`;
+  const res = await authFetch("/sign-in/social", {
+    method: "POST",
+    body: JSON.stringify({ provider: "google", callbackURL }),
   });
-  if (result?.error) throw new Error(result.error.message || "Google sign-in failed");
-  // Redirect flow — browser navigates away
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || data.error || "Google sign-in failed");
+  }
+  const redirectTo = data.url || data.redirectTo || data.data?.url;
+  if (redirectTo) {
+    window.location.href = redirectTo;
+    return;
+  }
+  throw new Error("Google sign-in did not return a redirect URL");
 }
 
 export async function signOut() {
-  if (authClient) await authClient.signOut();
+  if (authUrl) {
+    try {
+      await authFetch("/sign-out", { method: "POST", body: "{}" });
+    } catch {
+      // ignore
+    }
+  }
   cachedToken = null;
   tokenExpiresAt = 0;
   currentUser = null;
 }
 
 async function afterAuth() {
-  const session = await authClient.getSession();
-  currentUser = session?.data?.user || null;
+  const session = await getSession();
+  currentUser = session?.user || null;
+  if (!currentUser) {
+    // Some responses embed user on sign-in/up payload; try token path anyway
+    await refreshToken();
+    return;
+  }
   await refreshToken();
 }
 
@@ -118,7 +178,7 @@ export function installAuthenticatedFetch() {
     const isApi = typeof url === "string" && url.startsWith("/api/");
     const isPublic =
       url.startsWith("/api/health") || url.startsWith("/api/auth/config");
-    if (isApi && !isPublic && authClient) {
+    if (isApi && !isPublic && authEnabled) {
       const token = await getAccessToken();
       if (token) {
         const headers = new Headers(init.headers || {});
@@ -129,8 +189,7 @@ export function installAuthenticatedFetch() {
       }
     }
     const res = await original(input, init);
-    if (res.status === 401 && authClient && isApi && !isPublic) {
-      // Force token refresh once, then retry
+    if (res.status === 401 && authEnabled && isApi && !isPublic) {
       cachedToken = null;
       const token = await refreshToken();
       if (token) {
@@ -198,6 +257,7 @@ export function mountLoginGate({ onAuthenticated }) {
     signupBtn.disabled = true;
     try {
       await signUp({ email, password });
+      if (!currentUser) throw new Error("Signed up but no session yet — try signing in.");
       gate.remove();
       onAuthenticated?.(currentUser);
     } catch (err) {
@@ -222,6 +282,7 @@ export function mountLoginGate({ onAuthenticated }) {
       } else {
         await signIn({ email, password });
       }
+      if (!currentUser) throw new Error("No session after sign-in.");
       gate.remove();
       onAuthenticated?.(currentUser);
     } catch (err) {

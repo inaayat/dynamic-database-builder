@@ -59,16 +59,18 @@
       installAuthenticatedFetch,
       mountLoginGate,
       mountUserChip,
-    } from "/static/js/auth-client.js?v=1";
+    } from "/static/js/auth-client.js?v=3";
 
     const status = document.getElementById("load-status");
+    if (status) status.textContent = "Checking sign-in…";
 
     async function bootApp() {
       mountUserChip({
         mount: document.getElementById("auth-user"),
         onSignedOut: () => window.location.reload(),
       });
-      import("/static/js/editor.js?v=9").catch((err) => {
+      if (status) status.textContent = "Loading schema…";
+      import("/static/js/editor.js?v=10").catch((err) => {
         if (status) {
           status.textContent = "Failed to load app: " + (err?.message || err);
           status.classList.add("error");
