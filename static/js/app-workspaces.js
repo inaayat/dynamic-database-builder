@@ -17,6 +17,150 @@ export function mountAppWorkspaceBar({ mount, onChange, variant = "sidebar" }) {
   return mountBar({ mount, onChange });
 }
 
+function mountCreateForm({ onSubmit, onCancel }) {
+  const panel = document.createElement("div");
+  panel.className = "app-workspace-create";
+  panel.hidden = true;
+
+  const title = document.createElement("p");
+  title.className = "app-workspace-create-title";
+  title.textContent = "New workspace";
+
+  const nameLabel = document.createElement("label");
+  nameLabel.className = "app-workspace-create-label";
+  nameLabel.textContent = "Name";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.className = "app-workspace-create-input";
+  nameInput.placeholder = "e.g. AMC A-List Tracking";
+  nameInput.autocomplete = "off";
+  nameLabel.append(nameInput);
+
+  const templateLabel = document.createElement("span");
+  templateLabel.className = "app-workspace-create-label";
+  templateLabel.textContent = "Start from";
+
+  const templateField = document.createElement("div");
+  templateField.className = "app-workspace-create-templates";
+  templateField.setAttribute("role", "radiogroup");
+  templateField.setAttribute("aria-label", "Workspace template");
+
+  const templates = [
+    { id: "blank", label: "Blank workspace", hint: "Brainstorm from scratch" },
+    { id: "tagged_knowledge_base", label: "Notes template", hint: "Pre-built notes KB" },
+  ];
+
+  templates.forEach((tpl, i) => {
+    const opt = document.createElement("label");
+    opt.className = "app-workspace-create-template";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "workspace-template";
+    radio.value = tpl.id;
+    radio.checked = i === 0;
+    const copy = document.createElement("span");
+    copy.className = "app-workspace-create-template-copy";
+    const strong = document.createElement("strong");
+    strong.textContent = tpl.label;
+    const hint = document.createElement("small");
+    hint.className = "muted";
+    hint.textContent = tpl.hint;
+    copy.append(strong, hint);
+    opt.append(radio, copy);
+    templateField.appendChild(opt);
+  });
+
+  const errorEl = document.createElement("p");
+  errorEl.className = "app-workspace-create-error muted";
+  errorEl.hidden = true;
+
+  const actions = document.createElement("div");
+  actions.className = "app-workspace-create-actions";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "btn btn-sm";
+  cancelBtn.textContent = "Cancel";
+  const createBtn = document.createElement("button");
+  createBtn.type = "button";
+  createBtn.className = "btn btn-sm btn-primary";
+  createBtn.textContent = "Create";
+  actions.append(cancelBtn, createBtn);
+
+  panel.append(title, nameLabel, templateLabel, templateField, errorEl, actions);
+
+  function selectedTemplate() {
+    const checked = templateField.querySelector('input[name="workspace-template"]:checked');
+    return checked?.value || "blank";
+  }
+
+  function show() {
+    panel.hidden = false;
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+    nameInput.value = "";
+    const firstRadio = templateField.querySelector('input[value="blank"]');
+    if (firstRadio) firstRadio.checked = true;
+    setTimeout(() => nameInput.focus(), 0);
+  }
+
+  function hide() {
+    panel.hidden = true;
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+
+  function setBusy(busy) {
+    createBtn.disabled = busy;
+    cancelBtn.disabled = busy;
+    nameInput.disabled = busy;
+    templateField.querySelectorAll("input").forEach((el) => {
+      el.disabled = busy;
+    });
+  }
+
+  function showError(message) {
+    errorEl.textContent = message;
+    errorEl.hidden = !message;
+  }
+
+  async function submit() {
+    const title = nameInput.value.trim();
+    if (!title) {
+      showError("Enter a workspace name.");
+      nameInput.focus();
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSubmit({ title, template: selectedTemplate() });
+      hide();
+    } catch (err) {
+      showError(err.message || "Could not create workspace.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  createBtn.addEventListener("click", () => submit());
+  cancelBtn.addEventListener("click", () => {
+    hide();
+    onCancel?.();
+  });
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      hide();
+      onCancel?.();
+    }
+  });
+
+  return { panel, show, hide, isOpen: () => !panel.hidden };
+}
+
 function mountBar({ mount, onChange }) {
   let state = { active_id: null, workspaces: [] };
 
@@ -40,7 +184,20 @@ function mountBar({ mount, onChange }) {
   startOverBtn.textContent = "Start over";
   startOverBtn.title = "Clear this workspace design and data";
 
-  mount.append(label, select, newBtn, startOverBtn);
+  const row = document.createElement("div");
+  row.className = "app-workspace-bar-row";
+  row.append(label, select, newBtn, startOverBtn);
+
+  const createForm = mountCreateForm({
+    onSubmit: async ({ title, template }) => {
+      const data = await createWorkspace({ title, template });
+      state.active_id = data.workspace?.id || data.active_id;
+      await refresh(state, renderSelect);
+      onChange?.(data, { created: true });
+    },
+  });
+
+  mount.append(row, createForm.panel);
 
   select.addEventListener("change", async () => {
     const id = select.value;
@@ -50,11 +207,13 @@ function mountBar({ mount, onChange }) {
     });
   });
 
-  newBtn.addEventListener("click", () =>
-    openCreateDialog(state, onChange, newBtn, async () => {
-      await refresh(state, renderSelect);
-    })
-  );
+  newBtn.addEventListener("click", () => {
+    if (createForm.isOpen()) {
+      createForm.hide();
+      return;
+    }
+    createForm.show();
+  });
 
   startOverBtn.addEventListener("click", () =>
     startOverActive(state, onChange, startOverBtn)
@@ -91,6 +250,15 @@ function mountSidebar({ mount, onChange }) {
   list.setAttribute("role", "listbox");
   list.setAttribute("aria-label", "Workspaces");
 
+  const createForm = mountCreateForm({
+    onSubmit: async ({ title, template }) => {
+      const data = await createWorkspace({ title, template });
+      state.active_id = data.workspace?.id || data.active_id;
+      await refresh(state, renderList);
+      onChange?.(data, { created: true });
+    },
+  });
+
   const actions = document.createElement("div");
   actions.className = "app-workspace-sidebar-actions";
 
@@ -113,13 +281,15 @@ function mountSidebar({ mount, onChange }) {
   deleteBtn.title = "Remove this workspace and its database";
 
   actions.append(newBtn, startOverBtn, deleteBtn);
-  mount.append(head, list, actions);
+  mount.append(head, list, createForm.panel, actions);
 
-  newBtn.addEventListener("click", () =>
-    openCreateDialog(state, onChange, newBtn, async () => {
-      await refresh(state, renderList);
-    })
-  );
+  newBtn.addEventListener("click", () => {
+    if (createForm.isOpen()) {
+      createForm.hide();
+      return;
+    }
+    createForm.show();
+  });
 
   startOverBtn.addEventListener("click", () =>
     startOverActive(state, onChange, startOverBtn)
@@ -198,29 +368,6 @@ async function switchWorkspace(id, state, onChange, onError) {
   } catch (err) {
     alert(err.message || "Could not switch workspace.");
     onError?.();
-  }
-}
-
-async function openCreateDialog(state, onChange, trigger, afterCreate) {
-  const title = prompt("Name for the new workspace:");
-  if (!title?.trim()) return;
-
-  const template = confirm(
-    "Use the Notes template?\n\nOK = Notes template\nCancel = blank workspace"
-  )
-    ? "tagged_knowledge_base"
-    : "blank";
-
-  trigger.disabled = true;
-  try {
-    const data = await createWorkspace({ title: title.trim(), template });
-    state.active_id = data.workspace?.id || data.active_id;
-    await afterCreate?.();
-    onChange?.(data, { created: true });
-  } catch (err) {
-    alert(err.message || "Could not create workspace.");
-  } finally {
-    trigger.disabled = false;
   }
 }
 
