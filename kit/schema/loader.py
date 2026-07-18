@@ -18,7 +18,11 @@ class SchemaValidationError(ValueError):
 
 
 def active_schema_path(root: Path) -> Path:
-    return root / "data" / "active-schema.json"
+    from kit.schema.workspaces import WorkspaceStore
+
+    store = WorkspaceStore(root)
+    store.ensure_initialized()
+    return store.active_schema_path()
 
 
 def list_packages() -> list[str]:
@@ -118,7 +122,8 @@ class SchemaLoader:
         active = active_schema_path(self.root)
         if active.is_file():
             data = self._read_json(active)
-            return self.load_from_data(data, source="active")
+            ws_id = data.get("site", {}).get("id", "active")
+            return self.load_from_data(data, source=f"workspace:{ws_id}")
 
         data = self._read_json(self.package_path())
         self._write_active(data)
@@ -133,6 +138,20 @@ class SchemaLoader:
         package = self.load_from_data(data, source="active")
         self._write_active(data)
         return package
+
+    def load_package_into_active(self, package_id: str) -> SitePackage:
+        """Replace active workspace schema with a template package."""
+        from kit.schema.workspaces import WorkspaceStore
+
+        store = WorkspaceStore(self.root)
+        store.ensure_initialized()
+        ws_id = store.get_active_id()
+        entry = next(
+            (w for w in store._read_index().get("workspaces", []) if w["id"] == ws_id),
+            {"title": "Workspace"},
+        )
+        schema = store.schema_from_template(package_id, ws_id, entry.get("title") or ws_id)
+        return self.save(schema)
 
     def patch(self, partial: dict[str, Any]) -> SitePackage:
         merged = deep_merge(self.raw, partial)

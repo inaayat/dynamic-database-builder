@@ -82,3 +82,39 @@ export async function loadPackage(id) {
   if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
   return data;
 }
+
+export async function listWorkspaces() {
+  const res = await fetch("/api/workspaces");
+  if (!res.ok) throw new Error(`GET /api/workspaces: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createWorkspace({ title, template = "blank" }) {
+  const res = await fetch("/api/workspaces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, template }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
+  return data;
+}
+
+export async function activateWorkspace(workspaceId) {
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/activate`, {
+    method: "POST",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
+  return data;
+}
+
+export async function startOverWorkspace(workspaceId) {
+  const res = await fetch(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/start-over`,
+    { method: "POST" }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
+  return data;
+}

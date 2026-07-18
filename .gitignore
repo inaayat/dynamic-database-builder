@@ -1,5 +1,6 @@
-# Active schema (user edits from Design tab)
+# Active schema (legacy — migrated to data/workspaces/)
 data/active-schema.json
+data/workspaces/
 
 planning.db
 planning.db-shm

@@ -31,6 +31,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   const intro = document.createElement("div");
   intro.className = "design-intro";
   intro.innerHTML = `<h2>${PAGE_INTRO.title}</h2>`;
+  const workspaceScope = document.createElement("p");
+  workspaceScope.className = "design-workspace-scope muted";
+  intro.appendChild(workspaceScope);
   intro.appendChild(helpParagraph(PAGE_INTRO.lead));
   intro.appendChild(helpParagraph(PAGE_INTRO.note));
   const howDetails = document.createElement("details");
@@ -108,6 +111,15 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   mount.innerHTML = "";
   mount.append(intro, toolbar, messages, main);
+
+  function updateWorkspaceIntro() {
+    const title = workingSchema.site?.title || "Workspace";
+    const db = workingSchema.storage?.local_db || "";
+    const dbName = db ? db.split("/").pop() : "";
+    workspaceScope.textContent = dbName
+      ? `Design for “${title}” · ${dbName}`
+      : `Design for “${title}”`;
+  }
 
   function onSchemaChange(updated) {
     workingSchema = updated;
@@ -342,7 +354,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   function renderEmptyState() {
     const empty = document.createElement("div");
     empty.className = "design-empty";
-    empty.innerHTML = `<h3>Set up your workspace</h3><p class="design-help">Brainstorm what you might track, start from a template, or open the studio directly.</p>`;
+    empty.innerHTML = `<h3>Design this workspace</h3><p class="design-help">This workspace has no Item types yet. Brainstorm what to track, use a template, or open the studio.</p>`;
     const actions = document.createElement("div");
     actions.className = "design-empty-actions";
     const brainstormBtn = document.createElement("button");
@@ -472,14 +484,22 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   }
 
   loadPackages();
+  updateWorkspaceIntro();
   renderMain();
 
   return {
-    reload(schema) {
+    reload(schema, { startOver = false, created = false } = {}) {
       workingSchema = structuredClone(schema);
       selectedEntityId = Object.keys(workingSchema.entity_types || {})[0] || null;
+      const empty = !Object.keys(workingSchema.entity_types || {}).length;
+      if (startOver || created || empty) {
+        brainstormMode = false;
+        startedBlank = empty;
+      }
       statusEl.textContent = "";
       messages.hidden = true;
+      intro.hidden = false;
+      updateWorkspaceIntro();
       renderMain();
     },
   };
@@ -488,11 +508,11 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 function blankWorkspace(current) {
   return {
     schema_version: current.schema_version || "1.1",
-    title: "My Workspace",
+    title: current.site?.title || "My Workspace",
     site: {
       ...(current.site || {}),
       id: current.site?.id || "my-workspace",
-      title: "My Workspace",
+      title: current.site?.title || "My Workspace",
     },
     storage: current.storage || { local_db: "planning.db" },
     format_conventions: current.format_conventions || { bullet_separator: "\u001e" },

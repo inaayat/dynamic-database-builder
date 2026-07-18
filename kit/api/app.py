@@ -18,7 +18,9 @@ from kit.schema.loader import (
     SchemaValidationError,
     get_loader,
     list_packages,
+    reset_loader,
 )
+from kit.schema.workspaces import WorkspaceStore
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = ROOT / "static"
@@ -40,7 +42,19 @@ def reload_app_state(app: FastAPI, loader: SchemaLoader) -> Runtime:
     _runtime = Runtime(loader.package, ROOT)
     app.state.runtime = _runtime
     app.state.schema_loader = loader
+    app.state.workspace_store = WorkspaceStore(ROOT)
     return _runtime
+
+
+def _reload_after_workspace_change(app: FastAPI) -> dict[str, Any]:
+    reset_loader()
+    loader = get_loader(ROOT)
+    runtime = reload_app_state(app, loader)
+    return {
+        "schema": loader.to_json(),
+        "active_id": app.state.workspace_store.get_active_id(),
+        "meta": read_meta(runtime.db_path),
+    }
 
 
 def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
@@ -57,6 +71,50 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
     app.state.runtime = runtime
     app.state.schema_loader = schema_loader
     app.state.root = ROOT
+    app.state.workspace_store = WorkspaceStore(ROOT)
+    app.state.workspace_store.ensure_initialized()
+
+    @app.get("/api/workspaces")
+    def list_workspaces() -> dict:
+        store: WorkspaceStore = app.state.workspace_store
+        return {
+            "active_id": store.get_active_id(),
+            "workspaces": store.list_workspaces(),
+        }
+
+    @app.post("/api/workspaces")
+    def create_workspace(body: dict[str, Any]) -> dict:
+        title = (body.get("title") or "").strip() or "Workspace"
+        template = body.get("template") or "blank"
+        store: WorkspaceStore = app.state.workspace_store
+        try:
+            created = store.create(title=title, template=template, set_active=True)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        payload = _reload_after_workspace_change(app)
+        return {"ok": True, "workspace": created["workspace"], **payload}
+
+    @app.post("/api/workspaces/{workspace_id}/activate")
+    def activate_workspace(workspace_id: str) -> dict:
+        store: WorkspaceStore = app.state.workspace_store
+        try:
+            store.activate(workspace_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        payload = _reload_after_workspace_change(app)
+        return {"ok": True, **payload}
+
+    @app.post("/api/workspaces/{workspace_id}/start-over")
+    def start_over_workspace(workspace_id: str) -> dict:
+        store: WorkspaceStore = app.state.workspace_store
+        try:
+            store.start_over(workspace_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        if store.get_active_id() != workspace_id:
+            store.activate(workspace_id)
+        payload = _reload_after_workspace_change(app)
+        return {"ok": True, **payload}
 
     @app.get("/api/schema")
     def get_schema() -> dict:
@@ -133,16 +191,29 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
     def load_schema_package(package_id: str) -> dict:
         try:
             loader_inst: SchemaLoader = app.state.schema_loader
-            loader_inst.load_package(package_id)
+            loader_inst.load_package_into_active(package_id)
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
         except SchemaValidationError as exc:
             raise HTTPException(400, str(exc)) from exc
 
-        conn = connect(db_path)
+        runtime_obj: Runtime = app.state.runtime
+        conn = connect(runtime_obj.db_path)
         preview: dict[str, Any] = {}
         try:
             preview = diff_schema(conn, loader_inst.package)
+            if preview.get("destructive"):
+                store: WorkspaceStore = app.state.workspace_store
+                store.start_over(store.get_active_id())
+                reset_loader()
+                loader_inst = get_loader(ROOT)
+                loader_inst.load_package_into_active(package_id)
+                runtime_obj = Runtime(loader_inst.package, ROOT)
+                app.state.runtime = runtime_obj
+                app.state.schema_loader = loader_inst
+                conn.close()
+                conn = connect(runtime_obj.db_path)
+                preview = diff_schema(conn, loader_inst.package)
             if not preview.get("destructive"):
                 apply_migrations(conn, loader_inst.package, preview)
         finally:
@@ -165,9 +236,11 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
     def get_health() -> dict:
         sl: SchemaLoader = app.state.schema_loader
         pkg = sl.package
+        store: WorkspaceStore = app.state.workspace_store
         return {
             "status": "ok",
             "site_id": pkg.site.id,
+            "workspace_id": store.get_active_id(),
             "schema_version": pkg.schema_version,
             "package": sl.package_name,
             "source": sl.source,

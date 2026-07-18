@@ -4,7 +4,7 @@ export const PAGE_INTRO = {
   title: "Design",
   lead:
     "Build your workspace from Items — add fields, link Items together, then choose how they appear.",
-  note: "Links are fields you add on an Item. Changes stay in Design until you Apply Changes.",
+  note: "Each workspace has its own Design schema and SQLite database. Links are fields you add on an Item. Apply Changes to make edits live.",
 };
 
 export const PANEL_HELP = {

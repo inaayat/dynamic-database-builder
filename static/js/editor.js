@@ -1,3 +1,4 @@
+import { mountAppWorkspaceBar } from "./app-workspaces.js";
 import { initDesignTab } from "./design/design-tab.js";
 import { mountCustomizePanel } from "./views/customize-panel.js";
 import { renderGridView } from "./views/grid-view.js";
@@ -15,6 +16,7 @@ let activeWorkspaceId = null;
 let designTab = null;
 let customizePanel = null;
 let workspacePickerApi = null;
+let appWorkspaceBar = null;
 
 const tabs = document.querySelectorAll(".tab[data-mode]");
 const panels = document.querySelectorAll(".panel[data-mode]");
@@ -42,6 +44,16 @@ function getDefaultContainerId() {
 
 function getActiveWorkspaceId() {
   return activeWorkspaceId || getDefaultContainerId();
+}
+
+function updateHeaderMeta() {
+  if (!schema) return;
+  document.title = schema.site.title + " — Design";
+  document.getElementById("site-title").textContent = schema.site.title;
+  const db = schema.storage?.local_db || "data.db";
+  const dbName = db.split("/").pop();
+  document.getElementById("site-meta").textContent =
+    `${schema.site.id} · schema ${schema.schema_version} · ${dbName}`;
 }
 
 async function initWorkspacePicker() {
@@ -76,6 +88,31 @@ function switchToWorkspace() {
   switchMode("edit");
 }
 
+async function applyWorkspacePayload(data, { startOver = false, created = false } = {}) {
+  schema = data.schema;
+  activeViewId = null;
+  activeWorkspaceId = null;
+  updateHeaderMeta();
+  await appWorkspaceBar?.refresh();
+  await initWorkspacePicker();
+  renderViewTabs(true);
+  if (designTab) {
+    designTab.reload(schema, { startOver, created });
+  } else {
+    initDesign();
+  }
+  if (startOver || created) switchMode("design");
+}
+
+function initAppWorkspaceBar() {
+  const mount = document.getElementById("app-workspace-bar");
+  if (!mount) return;
+  appWorkspaceBar = mountAppWorkspaceBar({
+    mount,
+    onChange: applyWorkspacePayload,
+  });
+}
+
 async function loadSchema() {
   const status = document.getElementById("load-status");
   try {
@@ -83,11 +120,8 @@ async function loadSchema() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     schema = await res.json();
 
-    document.title = schema.site.title + " — Design";
-    document.getElementById("site-title").textContent = schema.site.title;
-    document.getElementById("site-meta").textContent =
-      `${schema.site.id} · schema ${schema.schema_version}`;
-
+    updateHeaderMeta();
+    initAppWorkspaceBar();
     await initWorkspacePicker();
     renderViewTabs();
     initCustomizePanel();
@@ -116,7 +150,7 @@ function initDesign() {
     getSchema: () => schema,
     setSchema: (next) => {
       schema = next;
-      renderViewTabs();
+      renderViewTabs(false);
     },
     onPreview: () => {
       switchToWorkspace();

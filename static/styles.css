@@ -55,6 +55,48 @@ header h1 {
   font-weight: 600;
 }
 
+.header-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.app-workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.app-workspace-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.app-workspace-select {
+  min-width: 10rem;
+  max-width: 16rem;
+  font-size: var(--fs-sm);
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.app-workspace-start-over {
+  color: #b45309;
+  border-color: #fcd34d;
+}
+
+.design-workspace-scope {
+  margin: 0 0 0.35rem;
+  font-size: var(--fs-sm);
+}
+
 .site-meta {
   font-size: var(--fs-sm);
   color: var(--muted);
