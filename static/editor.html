@@ -45,6 +45,15 @@
     <p class="status" id="load-status">Loading schema…</p>
   </main>
 
-  <script type="module" src="/static/js/editor.js"></script>
+  <script type="module">
+    import("/static/js/editor.js").catch((err) => {
+      const status = document.getElementById("load-status");
+      if (status) {
+        status.textContent = "Failed to load app: " + (err?.message || err);
+        status.classList.add("error");
+      }
+      console.error(err);
+    });
+  </script>
 </body>
 </html>

@@ -8,6 +8,9 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from kit.api.routes import register_routes
 from kit.engine.db import connect, read_meta
@@ -26,6 +29,30 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = ROOT / "static"
 
 _runtime: Optional[Runtime] = None
+
+
+class DevStaticNoCacheMiddleware(BaseHTTPMiddleware):
+    """Avoid stale ES module caches during local development."""
+
+    _CONDITIONAL_HEADERS = frozenset({b"if-none-match", b"if-modified-since"})
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        path = request.url.path
+        if path.startswith("/static/") or path == "/":
+            # Strip validators so StaticFiles cannot answer 304 with a stale body.
+            request.scope["headers"] = [
+                (name, value)
+                for name, value in request.scope["headers"]
+                if name.lower() not in self._CONDITIONAL_HEADERS
+            ]
+
+        response = await call_next(request)
+        if path.startswith("/static/") or path == "/":
+            response.headers["Cache-Control"] = "no-store, must-revalidate"
+            for header in ("etag", "last-modified"):
+                if header in response.headers:
+                    del response.headers[header]
+        return response
 
 
 def get_runtime(loader: SchemaLoader) -> Runtime:
@@ -68,6 +95,7 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
         description=package.description or "Dynamic Database Builder",
         version=package.schema_version,
     )
+    app.add_middleware(DevStaticNoCacheMiddleware)
     app.state.runtime = runtime
     app.state.schema_loader = schema_loader
     app.state.root = ROOT
