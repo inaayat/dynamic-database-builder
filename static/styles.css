@@ -2424,6 +2424,76 @@ main {
   padding: 0.4rem 0.55rem;
 }
 
+.brainstorm-value-search {
+  margin-top: 0.15rem;
+}
+
+.brainstorm-value-search-input {
+  width: 100%;
+  max-width: none;
+  font-size: var(--fs-sm);
+  padding: 0.4rem 0.55rem;
+}
+
+.brainstorm-value-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.25rem;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.brainstorm-value-search-head {
+  margin: 0.2rem 0 0.05rem;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.brainstorm-value-search-head:first-child {
+  margin-top: 0;
+}
+
+.brainstorm-value-search-empty {
+  margin: 0;
+  padding: 0.25rem 0.1rem;
+  font-size: var(--fs-sm);
+}
+
+.brainstorm-value-search-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.brainstorm-value-search-option:hover,
+.brainstorm-value-search-option.active,
+.brainstorm-value-search-option:focus-visible {
+  background: var(--brainstorm-accent-soft);
+  outline: none;
+}
+
+.brainstorm-value-search-label {
+  min-width: 0;
+}
+
+.brainstorm-value-search-meta {
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
 .brainstorm-value-menu-input {
   width: 100%;
   max-width: none;

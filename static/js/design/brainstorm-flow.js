@@ -387,7 +387,7 @@ export function mountBrainstormFlow({
     const trayHint = document.createElement("p");
     trayHint.className = "muted brainstorm-tray-hint";
     trayHint.textContent =
-      "Place each detail on at least one record. Use Add value to reuse it on other records.";
+      "Place each detail on at least one record. Search on a record card to reuse details elsewhere.";
     tray.appendChild(trayHint);
 
     if (!unplaced.length) {
@@ -447,16 +447,7 @@ export function mountBrainstormFlow({
       });
 
       fields.appendChild(renderCardAddDetail(item.id));
-
-      const addBtn = document.createElement("button");
-      addBtn.type = "button";
-      addBtn.className = "btn btn-sm brainstorm-add-value";
-      addBtn.textContent = "Add value…";
-      addBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showAddValueMenu(item.id, addBtn);
-      });
-      fields.appendChild(addBtn);
+      fields.appendChild(renderCardValueSearch(item.id));
 
       card.appendChild(fields);
       grid.appendChild(card);
@@ -552,6 +543,178 @@ export function mountBrainstormFlow({
     return row;
   }
 
+  function renderCardValueSearch(entityId) {
+    const wrap = document.createElement("div");
+    wrap.className = "brainstorm-value-search";
+
+    const input = document.createElement("input");
+    input.type = "search";
+    input.className = "brainstorm-input brainstorm-value-search-input";
+    input.placeholder = "Search to add…";
+    input.autocomplete = "off";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-controls", `value-search-${entityId}`);
+    input.id = `value-search-input-${entityId}`;
+
+    const results = document.createElement("div");
+    results.className = "brainstorm-value-search-results";
+    results.id = `value-search-${entityId}`;
+    results.hidden = true;
+    results.setAttribute("role", "listbox");
+
+    let activeIndex = -1;
+    let options = [];
+
+    function buildOptions(query) {
+      const q = query.trim().toLowerCase();
+      const details = scalarsAvailableForRecord(state, entityId)
+        .filter((concept) => !q || concept.label.toLowerCase().includes(q))
+        .map((concept) => ({
+          kind: "detail",
+          concept,
+          label: concept.label,
+          meta: "Detail",
+        }));
+      const records = availableRecordLinks(state, entityId)
+        .filter((concept) => !q || concept.label.toLowerCase().includes(q))
+        .map((concept) => ({
+          kind: "record",
+          concept,
+          label: concept.label,
+          meta: "Record",
+        }));
+      return [...details, ...records];
+    }
+
+    function pick(option) {
+      if (option.kind === "detail") {
+        const res = placeScalar(
+          state,
+          option.concept.id,
+          entityId,
+          conceptFieldType(option.concept)
+        );
+        if (res.error) alert(res.error);
+      } else {
+        const res = placeRecordLink(state, entityId, option.concept.id, "many");
+        if (res.error) alert(res.error);
+      }
+      input.value = "";
+      activeIndex = -1;
+      results.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      render();
+    }
+
+    function renderResults() {
+      options = buildOptions(input.value);
+      results.innerHTML = "";
+      activeIndex = -1;
+
+      if (!options.length) {
+        if (!input.value.trim()) {
+          results.hidden = true;
+          input.setAttribute("aria-expanded", "false");
+          return;
+        }
+        results.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+        results.appendChild(
+          el("p", "muted brainstorm-value-search-empty", "No matching details or records.")
+        );
+        return;
+      }
+
+      results.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+
+      let lastKind = null;
+      options.forEach((option, index) => {
+        if (option.kind !== lastKind) {
+          const head = document.createElement("p");
+          head.className = "brainstorm-value-search-head muted";
+          head.textContent = option.kind === "detail" ? "Details" : "Records";
+          results.appendChild(head);
+          lastKind = option.kind;
+        }
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "brainstorm-value-search-option";
+        btn.setAttribute("role", "option");
+        btn.dataset.index = String(index);
+
+        const label = document.createElement("span");
+        label.className = "brainstorm-value-search-label";
+        label.textContent = option.label;
+
+        const meta = document.createElement("span");
+        meta.className = "brainstorm-value-search-meta muted";
+        meta.textContent = option.meta;
+
+        btn.append(label, meta);
+        btn.addEventListener("mousedown", (e) => e.preventDefault());
+        btn.addEventListener("click", () => pick(option));
+        results.appendChild(btn);
+      });
+    }
+
+    function setActiveIndex(next) {
+      const buttons = [...results.querySelectorAll(".brainstorm-value-search-option")];
+      if (!buttons.length) {
+        activeIndex = -1;
+        return;
+      }
+      activeIndex = ((next % buttons.length) + buttons.length) % buttons.length;
+      buttons.forEach((btn, i) => {
+        btn.classList.toggle("active", i === activeIndex);
+        if (i === activeIndex) btn.scrollIntoView({ block: "nearest" });
+      });
+    }
+
+    input.addEventListener("focus", () => renderResults());
+    input.addEventListener("input", () => renderResults());
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (results.hidden) renderResults();
+        setActiveIndex(activeIndex + 1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex(activeIndex <= 0 ? options.length - 1 : activeIndex - 1);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (activeIndex >= 0 && options[activeIndex]) pick(options[activeIndex]);
+        else if (options.length === 1) pick(options[0]);
+        return;
+      }
+      if (e.key === "Escape") {
+        input.value = "";
+        results.hidden = true;
+        input.setAttribute("aria-expanded", "false");
+        activeIndex = -1;
+        results.innerHTML = "";
+      }
+    });
+    input.addEventListener("blur", () => {
+      setTimeout(() => {
+        if (!wrap.contains(document.activeElement)) {
+          results.hidden = true;
+          input.setAttribute("aria-expanded", "false");
+          activeIndex = -1;
+        }
+      }, 120);
+    });
+
+    wrap.append(input, results);
+    return wrap;
+  }
+
   function renderRecordValueRow(entityId, placement, concept) {
     const field = document.createElement("div");
     field.className = "brainstorm-value-row brainstorm-value-row--record";
@@ -609,93 +772,6 @@ export function mountBrainstormFlow({
         },
       }))
     );
-  }
-
-  function showAddValueMenu(entityId, anchor) {
-    const detailItems = scalarsAvailableForRecord(state, entityId).map((concept) => ({
-      label: concept.label,
-      onPick: () => {
-        const res = placeScalar(state, concept.id, entityId, conceptFieldType(concept));
-        if (res.error) alert(res.error);
-        else render();
-      },
-    }));
-    const recordItems = availableRecordLinks(state, entityId).map((concept) => ({
-      label: concept.label,
-      onPick: () => {
-        const res = placeRecordLink(state, entityId, concept.id, "many");
-        if (res.error) alert(res.error);
-        else render();
-      },
-    }));
-
-    const sections = [];
-    if (detailItems.length) sections.push({ title: "Details", items: detailItems });
-    if (recordItems.length) sections.push({ title: "Records", items: recordItems });
-    sections.push({
-      title: "New",
-      items: [
-        {
-          label: "Create detail…",
-          onPick: () => showInlineDetailPrompt(entityId, anchor),
-        },
-      ],
-    });
-    showSectionedMenu(anchor, sections);
-  }
-
-  function showInlineDetailPrompt(entityId, anchor) {
-    document.querySelectorAll(".brainstorm-value-menu").forEach((m) => m.remove());
-    const menu = document.createElement("div");
-    menu.className = "brainstorm-value-menu brainstorm-value-menu--create";
-
-    const head = document.createElement("p");
-    head.className = "brainstorm-value-menu-head muted";
-    head.textContent = "New detail";
-    menu.appendChild(head);
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "brainstorm-input brainstorm-value-menu-input";
-    input.placeholder = "Detail name…";
-    input.autocomplete = "off";
-    menu.appendChild(input);
-
-    const actions = document.createElement("div");
-    actions.className = "brainstorm-value-menu-actions";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "btn btn-sm";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => menu.remove());
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "btn btn-sm btn-primary";
-    add.textContent = "Add";
-    const commit = () => {
-      const res = addDetailOnRecord(state, input.value, entityId);
-      if (res.error) alert(res.error);
-      else {
-        menu.remove();
-        render();
-      }
-    };
-    add.addEventListener("click", commit);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        commit();
-      }
-    });
-    actions.append(cancel, add);
-    menu.appendChild(actions);
-
-    const rect = anchor.getBoundingClientRect();
-    const canvasRect = canvas.getBoundingClientRect();
-    menu.style.top = `${rect.bottom - canvasRect.top + 4}px`;
-    menu.style.left = `${Math.max(0, rect.left - canvasRect.left)}px`;
-    canvas.appendChild(menu);
-    setTimeout(() => input.focus(), 0);
   }
 
   function showPickerMenu(title, items) {

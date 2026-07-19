@@ -284,7 +284,7 @@ export function addDetailOnRecord(state, label, entityId, fieldType) {
   if (concept) {
     if (effectiveKind(concept) === "item") {
       return {
-        error: `"${concept.label}" is a Record. Use Add value to link records.`,
+        error: `"${concept.label}" is a Record. Search on a record card to link records.`,
       };
     }
     concept.kind = "scalar";
