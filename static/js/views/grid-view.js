@@ -10,7 +10,8 @@ import {
   linkedEntityId,
   rowLinkData,
 } from "../entity-api.js";
-import { columnLabel, getViewColumns } from "../view-columns.js";
+import { columnLabel, getViewColumns, reorderViewColumn } from "../view-columns.js";
+import { patchSchema } from "../schema-client.js";
 import { openChipPicker } from "../widgets/chip-picker.js";
 import {
   formatFieldDisplay,
@@ -92,6 +93,14 @@ export async function renderGridView({
     container.appendChild(toolbar);
 
     const onRefresh = () => renderGridView({ container, schema, notebookId, view });
+    const saveColumnOrder = async () => {
+      try {
+        await patchSchema({ views: schema.views });
+        document.dispatchEvent(new CustomEvent("schema-views-updated"));
+      } catch (err) {
+        alert(err.message || "Could not save column order");
+      }
+    };
     const ctx = {
       schema,
       view,
@@ -109,10 +118,24 @@ export async function renderGridView({
     tableEl.className = "data-grid data-grid--desktop";
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    headRow.innerHTML =
-      columns.map((c) => `<th>${columnLabel(c, schema, view)}</th>`).join("") +
-      '<th class="data-grid-actions" aria-label="Actions"></th>';
+    columns.forEach((col) => {
+      const th = document.createElement("th");
+      th.className = "data-grid-th-sortable";
+      th.draggable = true;
+      th.dataset.columnId = col.id;
+      th.title = "Drag to reorder column";
+      th.innerHTML = `<span class="data-grid-th-handle" aria-hidden="true">⋮⋮</span> ${columnLabel(col, schema, view)}`;
+      headRow.appendChild(th);
+    });
+    const actionsTh = document.createElement("th");
+    actionsTh.className = "data-grid-actions";
+    actionsTh.setAttribute("aria-label", "Actions");
+    headRow.appendChild(actionsTh);
     thead.appendChild(headRow);
+    enableHeaderColumnDrag(headRow, view, async () => {
+      await saveColumnOrder();
+      onRefresh();
+    });
     tableEl.appendChild(thead);
 
     const tbody = document.createElement("tbody");
@@ -613,4 +636,40 @@ function renderJoinFieldCell({
   addInput.addEventListener("blur", () => submitQuickAdd());
   wrap.appendChild(addInput);
   return wrap;
+}
+
+function enableHeaderColumnDrag(headRow, view, onReordered) {
+  let dragId = null;
+
+  headRow.querySelectorAll(".data-grid-th-sortable").forEach((th) => {
+    th.addEventListener("dragstart", (e) => {
+      dragId = th.dataset.columnId;
+      th.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", dragId);
+    });
+    th.addEventListener("dragend", () => {
+      th.classList.remove("dragging");
+      headRow.querySelectorAll(".data-grid-th-sortable").forEach((cell) => {
+        cell.classList.remove("drag-over");
+      });
+      dragId = null;
+    });
+    th.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (th.dataset.columnId !== dragId) th.classList.add("drag-over");
+    });
+    th.addEventListener("dragleave", () => th.classList.remove("drag-over"));
+    th.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      th.classList.remove("drag-over");
+      const fromId = e.dataTransfer.getData("text/plain") || dragId;
+      if (!fromId || fromId === th.dataset.columnId) return;
+      const headers = [...headRow.querySelectorAll(".data-grid-th-sortable")];
+      const toIndex = headers.findIndex((cell) => cell.dataset.columnId === th.dataset.columnId);
+      reorderViewColumn(view, fromId, toIndex);
+      await onReordered();
+    });
+  });
 }
