@@ -5,6 +5,7 @@ import {
   entityListUrl,
   entityRowUrl,
   displayFieldForEntity,
+  itemLabel,
   junctionContainerId,
   linkedEntityId,
   rowLinkData,
@@ -95,15 +96,14 @@ export async function renderGridView({
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
     headRow.innerHTML =
-      "<th>#</th>" +
-      columns.map((c) => `<th>${columnLabel(c, schema, view)}</th>`).join("");
+      columns.map((c) => `<th>${columnLabel(c, schema, view)}</th>`).join("") +
+      '<th class="data-grid-actions" aria-label="Actions"></th>';
     thead.appendChild(headRow);
     tableEl.appendChild(thead);
 
     const tbody = document.createElement("tbody");
     rows.forEach((row) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td class="row-id">${row.id}</td>`;
       const payloads = { ...row };
 
       const primaryFields = columns
@@ -195,6 +195,38 @@ export async function renderGridView({
         }
         tr.appendChild(td);
       });
+
+      const actionsTd = document.createElement("td");
+      actionsTd.className = "data-grid-actions";
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "btn btn-sm data-grid-delete";
+      deleteBtn.setAttribute("aria-label", "Delete row");
+      deleteBtn.title = "Delete row";
+      deleteBtn.textContent = "×";
+      deleteBtn.addEventListener("click", async () => {
+        const label = itemLabel(row, entity);
+        const prompt = label && label !== row.id
+          ? `Delete “${label}”?`
+          : "Delete this row?";
+        if (!confirm(`${prompt}\n\nThis cannot be undone.`)) return;
+        deleteBtn.disabled = true;
+        try {
+          const res = await fetch(entityRowUrl(entityId, row.id, containerId), {
+            method: "DELETE",
+          });
+          if (!res.ok) {
+            const detail = await res.text();
+            throw new Error(detail || `HTTP ${res.status}`);
+          }
+          await renderGridView({ container, schema, notebookId, view });
+        } catch (err) {
+          alert(err.message || "Could not delete row.");
+          deleteBtn.disabled = false;
+        }
+      });
+      actionsTd.appendChild(deleteBtn);
+      tr.appendChild(actionsTd);
 
       tbody.appendChild(tr);
     });

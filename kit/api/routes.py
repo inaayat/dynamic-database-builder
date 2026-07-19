@@ -162,6 +162,21 @@ def register_routes() -> APIRouter:
             raise HTTPException(404, "Row not found")
         return row
 
+    @router.delete("/entities/{entity_id}/{row_id}")
+    def delete_entity_row(
+        request: Request,
+        entity_id: str,
+        row_id: str,
+        container_id: Optional[str] = Query(None),
+    ):
+        rt = _runtime(request)
+        if entity_id not in rt.package.entity_ids():
+            raise HTTPException(404, f"Unknown entity: {entity_id}")
+        deleted = rt.delete_row(entity_id, _coerce_row_id(entity_id, row_id), container_id)
+        if not deleted:
+            raise HTTPException(404, "Row not found")
+        return {"ok": True}
+
     @router.get("/entities/{entity_id}/{row_id}/links/{relationship_id}")
     def get_entity_links(
         request: Request,

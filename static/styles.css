@@ -913,6 +913,28 @@ main {
 
 .data-grid tr:last-child td { border-bottom: none; }
 
+.data-grid-actions {
+  width: 2.5rem;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.data-grid-delete {
+  min-width: 1.75rem;
+  padding: 0.1rem 0.35rem;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.data-grid-delete:hover,
+.data-grid-delete:focus-visible {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
 .cell-input,
 .bullet-editor input,
 .box-stack textarea {
