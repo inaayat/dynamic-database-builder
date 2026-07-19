@@ -91,8 +91,22 @@ export async function renderGridView({
     toolbar.append(addBtn, status);
     container.appendChild(toolbar);
 
+    const onRefresh = () => renderGridView({ container, schema, notebookId, view });
+    const ctx = {
+      schema,
+      view,
+      entityId,
+      entity,
+      fields,
+      columns,
+      notebookId,
+      containerId,
+      linkedCatalogs,
+      onRefresh,
+    };
+
     const tableEl = document.createElement("table");
-    tableEl.className = "data-grid";
+    tableEl.className = "data-grid data-grid--desktop";
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
     headRow.innerHTML =
@@ -102,10 +116,11 @@ export async function renderGridView({
     tableEl.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    rows.forEach((row) => {
-      const tr = document.createElement("tr");
-      const payloads = { ...row };
+    const cardList = document.createElement("div");
+    cardList.className = "row-cards row-cards--mobile";
 
+    rows.forEach((row) => {
+      const payloads = { ...row };
       const primaryFields = columns
         .filter((c) => c.source === "primary" && c.mode === "edit")
         .map((c) => c.field);
@@ -126,119 +141,285 @@ export async function renderGridView({
         },
       });
 
+      const rowCtx = { ...ctx, row, payloads, autosave, status };
+
+      const tr = document.createElement("tr");
       columns.forEach((col) => {
         const td = document.createElement("td");
-        if (col.source === "join" && col.mode === "chip") {
-          td.appendChild(
-            renderChipCell({
-              col,
-              row,
-              schema,
-              view,
-              entityId,
-              notebookId,
-              containerId,
-              linkedCatalogs,
-              onRefresh: () => renderGridView({ container, schema, notebookId, view }),
-            })
-          );
-        } else if (col.source === "join" && col.field) {
-          td.appendChild(
-            renderJoinFieldCell({
-              col,
-              row,
-              schema,
-              view,
-              entityId,
-              notebookId,
-              containerId,
-              onRefresh: () => renderGridView({ container, schema, notebookId, view }),
-            })
-          );
-        } else if (col.source === "primary") {
-          const fdef = fields[col.field] || {};
-          if (col.mode === "view") {
-            td.textContent = formatFieldDisplay(row[col.field], fdef);
-          } else {
-            const onChange = (val) => {
-              payloads[col.field] = val;
-              autosave.scheduleSave(payloads, status);
-            };
-            if (fdef.type === "bullet_list") {
-              td.appendChild(renderBulletEditor(row[col.field], onChange));
-            } else if (fdef.type === "enum") {
-              td.appendChild(renderEnumSelect(row[col.field], fdef.options, onChange));
-            } else if (fdef.type === "datetime") {
-              td.appendChild(renderDatetimeInput(row[col.field], onChange));
-            } else if (fdef.type === "date") {
-              td.appendChild(renderDateInput(row[col.field], onChange));
-            } else if (fdef.type === "currency") {
-              td.appendChild(renderCurrencyInput(row[col.field], onChange, fdef));
-            } else if (fdef.type === "percent") {
-              td.appendChild(renderPercentInput(row[col.field], onChange));
-            } else if (fdef.type === "rating") {
-              td.appendChild(renderRatingInput(row[col.field], onChange, fdef));
-            } else if (fdef.type === "number" || fdef.type === "integer") {
-              td.appendChild(renderNumberInput(row[col.field], onChange));
-            } else if (fdef.editor?.widget === "box_stack" || fdef.type === "multiline_text") {
-              td.appendChild(renderBoxStack(row[col.field], onChange));
-            } else if (fdef.type === "boolean") {
-              td.appendChild(
-                renderEnumSelect(row[col.field] ? "Yes" : "No", ["No", "Yes"], (val) => {
-                  onChange(val === "Yes" ? 1 : 0);
-                })
-              );
-            } else {
-              td.appendChild(renderTextInput(row[col.field], onChange));
-            }
-          }
-        }
+        appendColumnEditor(td, col, rowCtx);
         tr.appendChild(td);
       });
 
       const actionsTd = document.createElement("td");
       actionsTd.className = "data-grid-actions";
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "btn btn-sm data-grid-delete";
-      deleteBtn.setAttribute("aria-label", "Delete row");
-      deleteBtn.title = "Delete row";
-      deleteBtn.textContent = "×";
-      deleteBtn.addEventListener("click", async () => {
-        const label = itemLabel(row, entity);
-        const prompt = label && label !== row.id
-          ? `Delete “${label}”?`
-          : "Delete this row?";
-        if (!confirm(`${prompt}\n\nThis cannot be undone.`)) return;
-        deleteBtn.disabled = true;
-        try {
-          const res = await fetch(entityRowUrl(entityId, row.id, containerId), {
-            method: "DELETE",
-          });
-          if (!res.ok) {
-            const detail = await res.text();
-            throw new Error(detail || `HTTP ${res.status}`);
-          }
-          await renderGridView({ container, schema, notebookId, view });
-        } catch (err) {
-          alert(err.message || "Could not delete row.");
-          deleteBtn.disabled = false;
-        }
-      });
-      actionsTd.appendChild(deleteBtn);
+      actionsTd.appendChild(createDeleteButton(row, rowCtx));
       tr.appendChild(actionsTd);
-
       tbody.appendChild(tr);
+
+      cardList.appendChild(createRowCard(row, rowCtx));
     });
     tableEl.appendChild(tbody);
 
     const scrollWrap = document.createElement("div");
-    scrollWrap.className = "data-grid-scroll";
+    scrollWrap.className = "data-grid-scroll data-grid-scroll--desktop";
     scrollWrap.appendChild(tableEl);
-    container.appendChild(scrollWrap);
+    container.append(scrollWrap, cardList);
   } catch (err) {
     container.innerHTML = `<p class="status error">Failed to load: ${err.message}</p>`;
   }
+}
+
+function appendColumnEditor(parent, col, ctx) {
+  const { row, fields, payloads, autosave, status, schema, view, entityId, notebookId, containerId, linkedCatalogs, onRefresh } = ctx;
+
+  if (col.source === "join" && col.mode === "chip") {
+    parent.appendChild(
+      renderChipCell({
+        col,
+        row,
+        schema,
+        view,
+        entityId,
+        notebookId,
+        containerId,
+        linkedCatalogs,
+        onRefresh,
+      })
+    );
+    return;
+  }
+
+  if (col.source === "join" && col.field) {
+    parent.appendChild(
+      renderJoinFieldCell({
+        col,
+        row,
+        schema,
+        view,
+        entityId,
+        notebookId,
+        containerId,
+        onRefresh,
+      })
+    );
+    return;
+  }
+
+  if (col.source !== "primary") return;
+
+  const fdef = fields[col.field] || {};
+  if (col.mode === "view") {
+    parent.textContent = formatFieldDisplay(row[col.field], fdef);
+    return;
+  }
+
+  const onChange = (val) => {
+    payloads[col.field] = val;
+    autosave.scheduleSave(payloads, status);
+  };
+  appendPrimaryFieldEditor(parent, row[col.field], fdef, onChange);
+}
+
+function appendPrimaryFieldEditor(parent, value, fdef, onChange) {
+  if (fdef.type === "bullet_list") {
+    parent.appendChild(renderBulletEditor(value, onChange));
+  } else if (fdef.type === "enum") {
+    parent.appendChild(renderEnumSelect(value, fdef.options, onChange));
+  } else if (fdef.type === "datetime") {
+    parent.appendChild(renderDatetimeInput(value, onChange));
+  } else if (fdef.type === "date") {
+    parent.appendChild(renderDateInput(value, onChange));
+  } else if (fdef.type === "currency") {
+    parent.appendChild(renderCurrencyInput(value, onChange, fdef));
+  } else if (fdef.type === "percent") {
+    parent.appendChild(renderPercentInput(value, onChange));
+  } else if (fdef.type === "rating") {
+    parent.appendChild(renderRatingInput(value, onChange, fdef));
+  } else if (fdef.type === "number" || fdef.type === "integer") {
+    parent.appendChild(renderNumberInput(value, onChange));
+  } else if (fdef.editor?.widget === "box_stack" || fdef.type === "multiline_text") {
+    parent.appendChild(renderBoxStack(value, onChange));
+  } else if (fdef.type === "boolean") {
+    parent.appendChild(
+      renderEnumSelect(value ? "Yes" : "No", ["No", "Yes"], (val) => {
+        onChange(val === "Yes" ? 1 : 0);
+      })
+    );
+  } else {
+    parent.appendChild(renderTextInput(value, onChange));
+  }
+}
+
+function createDeleteButton(row, ctx) {
+  const { entity, entityId, containerId, onRefresh } = ctx;
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "btn btn-sm data-grid-delete";
+  deleteBtn.setAttribute("aria-label", "Delete row");
+  deleteBtn.title = "Delete row";
+  deleteBtn.textContent = "×";
+  deleteBtn.addEventListener("click", async () => {
+    const label = itemLabel(row, entity);
+    const prompt = label && label !== row.id ? `Delete “${label}”?` : "Delete this row?";
+    if (!confirm(`${prompt}\n\nThis cannot be undone.`)) return;
+    deleteBtn.disabled = true;
+    try {
+      const res = await fetch(entityRowUrl(entityId, row.id, containerId), {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const detail = await res.text();
+        throw new Error(detail || `HTTP ${res.status}`);
+      }
+      await onRefresh();
+    } catch (err) {
+      alert(err.message || "Could not delete row.");
+      deleteBtn.disabled = false;
+    }
+  });
+  return deleteBtn;
+}
+
+function createRowCard(row, ctx) {
+  const { entity, columns, schema, view } = ctx;
+  const card = document.createElement("article");
+  card.className = "row-card";
+
+  const title = document.createElement("h3");
+  title.className = "row-card-title";
+  title.textContent = itemLabel(row, entity) || `Row #${row.id}`;
+
+  const preview = document.createElement("dl");
+  preview.className = "row-card-preview";
+  columns.slice(0, 3).forEach((col) => {
+    const label = columnLabel(col, schema, view);
+    let value = "—";
+    if (col.source === "primary") {
+      const fdef = ctx.fields[col.field] || {};
+      value = formatFieldDisplay(row[col.field], fdef) || "—";
+    } else if (col.source === "join") {
+      const linkData = rowLinkData(row, col.relationship_id);
+      value = (linkData.names || []).join(", ") || "—";
+    }
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    preview.append(dt, dd);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "row-card-actions";
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "btn btn-sm btn-primary";
+  editBtn.textContent = "Edit";
+  editBtn.addEventListener("click", () => openRowSheet(row, ctx));
+
+  const deleteBtn = createDeleteButton(row, ctx);
+  deleteBtn.textContent = "Delete";
+  deleteBtn.className = "btn btn-sm row-card-delete";
+
+  actions.append(editBtn, deleteBtn);
+  card.append(title, preview, actions);
+  return card;
+}
+
+function openRowSheet(row, ctx) {
+  const { schema, view, columns } = ctx;
+  const label = itemLabel(row, ctx.entity) || `Row #${row.id}`;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "row-sheet-backdrop";
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
+
+  const sheet = document.createElement("div");
+  sheet.className = "row-sheet";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-label", `Edit ${label}`);
+
+  const handle = document.createElement("div");
+  handle.className = "row-sheet-handle";
+  handle.setAttribute("aria-hidden", "true");
+
+  const head = document.createElement("header");
+  head.className = "row-sheet-head";
+  const title = document.createElement("h2");
+  title.textContent = label;
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "btn btn-sm row-sheet-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "Done";
+  head.append(title, closeBtn);
+
+  const body = document.createElement("div");
+  body.className = "row-sheet-body";
+  const sheetStatus = document.createElement("span");
+  sheetStatus.className = "save-status";
+
+  const payloads = { ...row };
+  const primaryFields = columns
+    .filter((c) => c.source === "primary" && c.mode === "edit")
+    .map((c) => c.field);
+  const autosave = createAutosave({
+    debounceMs: 600,
+    onSave: async (payload) => {
+      const patchBody = {};
+      primaryFields.forEach((f) => {
+        if (payload[f] !== undefined) patchBody[f] = payload[f];
+      });
+      const res = await fetch(
+        entityRowUrl(ctx.entityId, row.id, ctx.containerId),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchBody),
+        }
+      );
+      if (!res.ok) throw new Error(await res.text());
+    },
+  });
+
+  const sheetCtx = {
+    ...ctx,
+    row,
+    payloads,
+    autosave,
+    status: sheetStatus,
+  };
+
+  columns.forEach((col) => {
+    const field = document.createElement("label");
+    field.className = "row-sheet-field";
+    const fieldLabel = document.createElement("span");
+    fieldLabel.className = "row-sheet-field-label";
+    fieldLabel.textContent = columnLabel(col, schema, view);
+    const control = document.createElement("div");
+    control.className = "row-sheet-field-control";
+    appendColumnEditor(control, col, sheetCtx);
+    field.append(fieldLabel, control);
+    body.appendChild(field);
+  });
+
+  body.appendChild(sheetStatus);
+  sheet.append(handle, head, body);
+  backdrop.appendChild(sheet);
+  document.body.appendChild(backdrop);
+  document.body.classList.add("row-sheet-open");
+
+  function close() {
+    backdrop.remove();
+    document.body.classList.remove("row-sheet-open");
+  }
+
+  closeBtn.addEventListener("click", close);
+  backdrop.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+  closeBtn.focus();
 }
 
 function renderChipCell({
