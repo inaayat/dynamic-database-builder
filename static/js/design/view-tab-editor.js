@@ -7,6 +7,7 @@ import {
   columnModeLabel,
   ensureViewShape,
   isColumnIncluded,
+  moveViewColumn,
   relationshipsForEntity,
   relationshipLabel,
   removeViewColumn,
@@ -47,24 +48,74 @@ export function renderViewJoinsAndColumns(view, schema, onChange) {
 
   const colsBlock = document.createElement("div");
   colsBlock.className = "view-columns-block";
-  colsBlock.innerHTML = "<span class='view-config-label'>Columns on tab</span><p class='muted view-config-hint'>Drag to reorder. Check fields below to add or remove.</p>";
+  colsBlock.innerHTML =
+    "<span class='view-config-label'>Column layout</span>" +
+    "<p class='muted view-config-hint'>Drag to reorder — changes apply live in the table.</p>";
+
+  const preview = document.createElement("div");
+  preview.className = "column-live-preview";
+  preview.setAttribute("aria-hidden", "true");
 
   const colList = document.createElement("div");
   colList.className = "view-column-list view-column-list-sortable";
+
+  function renderPreview() {
+    preview.innerHTML = "";
+    if (!(view.columns || []).length) {
+      preview.hidden = true;
+      return;
+    }
+    preview.hidden = false;
+    (view.columns || []).forEach((col) => {
+      const chip = document.createElement("span");
+      chip.className = "column-live-chip";
+      chip.textContent = columnLabel(col, schema, view);
+      chip.draggable = true;
+      chip.dataset.columnId = col.id;
+      chip.addEventListener("dragstart", (e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", col.id);
+        chip.classList.add("dragging");
+      });
+      chip.addEventListener("dragend", () => chip.classList.remove("dragging"));
+      chip.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        chip.classList.add("drag-over");
+      });
+      chip.addEventListener("dragleave", () => chip.classList.remove("drag-over"));
+      chip.addEventListener("drop", (e) => {
+        e.preventDefault();
+        chip.classList.remove("drag-over");
+        const fromId = e.dataTransfer.getData("text/plain");
+        if (!fromId || fromId === col.id) return;
+        const chips = [...preview.querySelectorAll(".column-live-chip")];
+        const toIndex = chips.findIndex((c) => c.dataset.columnId === col.id);
+        reorderViewColumn(view, fromId, toIndex);
+        renderIncludedColumns();
+        onChange();
+      });
+      preview.appendChild(chip);
+    });
+  }
 
   function renderIncludedColumns() {
     colList.innerHTML = "";
     if (!(view.columns || []).length) {
       colList.innerHTML = "<p class='muted ws-tabs-empty'>No columns yet — check fields below.</p>";
+      renderPreview();
       return;
     }
-    (view.columns || []).forEach((col) => {
-      colList.appendChild(renderColumnRow(col, view, schema, colList, onChange, renderIncludedColumns));
+    (view.columns || []).forEach((col, index) => {
+      colList.appendChild(
+        renderColumnRow(col, view, schema, colList, onChange, renderIncludedColumns, index)
+      );
     });
     enableColumnDragDrop(colList, view, onChange, renderIncludedColumns);
+    renderPreview();
   }
+
   renderIncludedColumns();
-  colsBlock.appendChild(colList);
+  colsBlock.append(preview, colList);
 
   const availBlock = document.createElement("div");
   availBlock.className = "view-column-avail";
@@ -126,7 +177,7 @@ function renderColumnCandidates(view, schema, onChange, refreshIncluded) {
   return wrap;
 }
 
-function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded) {
+function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded, index) {
   const row = document.createElement("div");
   row.className = "view-column-row";
   row.draggable = true;
@@ -150,7 +201,10 @@ function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded) 
     modeSel.appendChild(opt);
     modeSel.disabled = true;
   } else if (col.source === "join" && col.field) {
-    [{ value: "edit", label: "Editable" }, { value: "view", label: "Read-only" }].forEach((optDef) => {
+    [
+      { value: "edit", label: "Editable" },
+      { value: "view", label: "Read-only" },
+    ].forEach((optDef) => {
       const opt = document.createElement("option");
       opt.value = optDef.value;
       opt.textContent = optDef.label;
@@ -162,7 +216,6 @@ function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded) 
       onChange();
     });
   } else {
-    // Primary columns: edit or view only (chips are join/junction).
     const primaryModes = COLUMN_MODE_OPTIONS.filter((o) => o.value !== "chip");
     primaryModes.forEach((optDef) => {
       const opt = document.createElement("option");
@@ -177,6 +230,32 @@ function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded) 
     });
   }
 
+  const moveBtns = document.createElement("div");
+  moveBtns.className = "view-column-move";
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.className = "btn-icon view-column-move-btn";
+  upBtn.textContent = "↑";
+  upBtn.title = "Move up";
+  upBtn.disabled = index === 0;
+  upBtn.addEventListener("click", () => {
+    moveViewColumn(view, col.id, -1);
+    refreshIncluded();
+    onChange();
+  });
+  const downBtn = document.createElement("button");
+  downBtn.type = "button";
+  downBtn.className = "btn-icon view-column-move-btn";
+  downBtn.textContent = "↓";
+  downBtn.title = "Move down";
+  downBtn.disabled = index >= (view.columns || []).length - 1;
+  downBtn.addEventListener("click", () => {
+    moveViewColumn(view, col.id, 1);
+    refreshIncluded();
+    onChange();
+  });
+  moveBtns.append(upBtn, downBtn);
+
   const del = document.createElement("button");
   del.type = "button";
   del.className = "ie-field-remove";
@@ -188,7 +267,7 @@ function renderColumnRow(col, view, schema, colList, onChange, refreshIncluded) 
     onChange();
   });
 
-  row.append(handle, label, modeSel, del);
+  row.append(handle, label, modeSel, moveBtns, del);
   return row;
 }
 

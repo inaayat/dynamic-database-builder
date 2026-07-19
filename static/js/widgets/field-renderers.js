@@ -47,6 +47,9 @@ export function formatFieldDisplay(value, fdef = {}) {
       return String(value);
     case "boolean":
       return value ? "Yes" : "No";
+    case "bullet_list":
+      if (Array.isArray(value)) return value.filter(Boolean).map((v) => `• ${v}`).join(" ");
+      return String(value);
     default:
       return Array.isArray(value) ? value.join(", ") : String(value);
   }
@@ -54,43 +57,73 @@ export function formatFieldDisplay(value, fdef = {}) {
 
 export function renderBulletEditor(value, onChange) {
   const wrap = document.createElement("div");
-  wrap.className = "bullet-editor";
-  const bullets = Array.isArray(value) ? value : [];
-  if (!bullets.length) bullets.push("");
+  wrap.className = "bullet-textbox";
+
+  const ta = document.createElement("textarea");
+  ta.className = "bullet-textbox-input cell-input";
+  ta.rows = 4;
+  ta.spellcheck = true;
+  ta.placeholder = "Start typing…";
+
+  const bullets = Array.isArray(value)
+    ? value
+    : value
+      ? String(value).split(/\n/)
+      : [];
+  const lines = bullets.length ? bullets : [""];
+  ta.value = lines.map((line) => formatBulletLine(line)).join("\n");
+
+  function parseBullets(text) {
+    return text
+      .split("\n")
+      .map((line) => line.replace(/^[\s•\-\*·]+/, "").trimEnd())
+      .filter((line, index, all) => line.length > 0 || (all.length === 1 && index === 0));
+  }
 
   function emit() {
-    const rows = [...wrap.querySelectorAll("input")].map((i) => i.value).filter((v) => v.trim());
-    onChange(rows.length ? rows : [""]);
+    const parsed = parseBullets(ta.value);
+    onChange(parsed.length ? parsed : [""]);
   }
 
-  function render() {
-    wrap.innerHTML = "";
-    bullets.forEach((b, i) => {
-      const row = document.createElement("div");
-      row.className = "bullet-row";
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = b;
-      input.addEventListener("input", () => {
-        bullets[i] = input.value;
-        emit();
-      });
-      input.addEventListener("blur", emit);
-      row.appendChild(input);
-      wrap.appendChild(row);
-    });
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "btn-sm";
-    add.textContent = "+ bullet";
-    add.addEventListener("click", () => {
-      bullets.push("");
-      render();
-    });
-    wrap.appendChild(add);
-  }
-  render();
+  ta.addEventListener("input", emit);
+
+  ta.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = ta.value.slice(0, start);
+    const after = ta.value.slice(end);
+    const needsNewline = before.length > 0 && !before.endsWith("\n");
+    const insertion = (needsNewline ? "\n" : "") + "• ";
+    ta.value = before + insertion + after;
+    const pos = start + insertion.length;
+    ta.setSelectionRange(pos, pos);
+    emit();
+  });
+
+  ta.addEventListener("focus", () => {
+    if (!ta.value.trim()) {
+      ta.value = "• ";
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+  });
+
+  ta.addEventListener("blur", () => {
+    const parsed = parseBullets(ta.value);
+    ta.value = parsed.length
+      ? parsed.map((line) => formatBulletLine(line)).join("\n")
+      : "";
+    emit();
+  });
+
+  wrap.appendChild(ta);
   return wrap;
+}
+
+function formatBulletLine(line) {
+  const trimmed = String(line || "").replace(/^[\s•\-\*·]+/, "").trimEnd();
+  return trimmed ? `• ${trimmed}` : "• ";
 }
 
 export function renderBoxStack(value, onChange) {
