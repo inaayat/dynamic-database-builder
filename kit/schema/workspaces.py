@@ -39,7 +39,16 @@ def _slugify(label: str) -> str:
     return slug or "workspace"
 
 
-def blank_schema(workspace_id: str, title: str, db_relpath: str, port: int = 8771) -> dict[str, Any]:
+def blank_schema(
+    workspace_id: str,
+    title: str,
+    db_relpath: str,
+    port: int = 8771,
+    default_field_type: Optional[str] = None,
+) -> dict[str, Any]:
+    conventions: dict[str, Any] = {"bullet_separator": "\u001e"}
+    if default_field_type:
+        conventions["default_field_type"] = default_field_type
     return {
         "schema_version": "1.1",
         "title": title,
@@ -50,7 +59,7 @@ def blank_schema(workspace_id: str, title: str, db_relpath: str, port: int = 877
             "deployment": {"mode": "local_only"},
         },
         "storage": {"local_db": db_relpath},
-        "format_conventions": {"bullet_separator": "\u001e"},
+        "format_conventions": conventions,
         "entity_types": {},
         "relationships": [],
         "views": [],
@@ -352,6 +361,7 @@ class WorkspaceStore:
         *,
         title: str,
         template: str = "blank",
+        default_field_type: Optional[str] = None,
         set_active: bool = True,
     ) -> dict[str, Any]:
         if not self._pg:
@@ -364,7 +374,12 @@ class WorkspaceStore:
                 conn.commit()
         trimmed = title.strip() or "Workspace"
         ws_id = self._unique_id(_slugify(trimmed))
-        schema = blank_schema(ws_id, trimmed, self._db_relpath(ws_id))
+        schema = blank_schema(
+            ws_id,
+            trimmed,
+            self._db_relpath(ws_id),
+            default_field_type=default_field_type,
+        )
         entry = self._materialize_workspace(ws_id, trimmed, schema, set_active=set_active)
         return {"workspace": entry, "schema": schema}
 

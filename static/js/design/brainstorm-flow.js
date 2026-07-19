@@ -8,6 +8,7 @@ import {
   compileToSchema,
   createBrainstormState,
   createConcept,
+  defaultFieldTypeFromSchema,
   demoteToScalar,
   effectiveKind,
   FORMAT_OPTIONS,
@@ -24,6 +25,7 @@ import {
   scalarHasOpenSlots,
   scalarsAvailableForRecord,
   scalarsOnRecord,
+  setConceptFieldType,
   stepBlockedReason,
   stepReady,
   STEP_COPY,
@@ -45,6 +47,14 @@ export function mountBrainstormFlow({
   let stepIndex = 0;
   let workingSchema = null;
   let shouldFocusInput = false;
+
+  function fieldTypeDefault() {
+    return defaultFieldTypeFromSchema(baseSchema);
+  }
+
+  function conceptFieldType(concept) {
+    return concept.fieldType || suggestFieldType(concept.label, fieldTypeDefault());
+  }
 
   const shell = document.createElement("div");
   shell.className = "brainstorm-shell";
@@ -199,7 +209,7 @@ export function mountBrainstormFlow({
       const conceptId = payload.slice(7);
       const concept = state.concepts.find((c) => c.id === conceptId);
       if (concept) {
-        const res = placeScalar(state, conceptId, itemId, suggestFieldType(concept.label));
+        const res = placeScalar(state, conceptId, itemId, conceptFieldType(concept));
         if (res.error) return;
         render();
       }
@@ -247,6 +257,23 @@ export function mountBrainstormFlow({
       toggle.appendChild(btn);
     });
 
+    const parts = [label, toggle];
+    if (kind === "scalar") {
+      const fmt = document.createElement("select");
+      fmt.className = "brainstorm-format-select brainstorm-concept-format";
+      FORMAT_OPTIONS.forEach((opt) => {
+        const o = document.createElement("option");
+        o.value = opt.type;
+        o.textContent = opt.label;
+        o.selected = conceptFieldType(concept) === opt.type;
+        fmt.appendChild(o);
+      });
+      fmt.addEventListener("change", () => {
+        setConceptFieldType(state, concept.id, fmt.value);
+      });
+      parts.push(fmt);
+    }
+
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "brainstorm-chip-remove";
@@ -270,7 +297,7 @@ export function mountBrainstormFlow({
       row.title = "Drag onto another record to store it as a value";
     }
 
-    row.append(label, toggle, remove);
+    row.append(...parts, remove);
     return row;
   }
 
@@ -453,11 +480,11 @@ export function mountBrainstormFlow({
       const o = document.createElement("option");
       o.value = opt.type;
       o.textContent = opt.label;
-      o.selected = placement.fieldType === opt.type;
+      o.selected = (placement.fieldType || conceptFieldType(concept)) === opt.type;
       fmt.appendChild(o);
     });
     fmt.addEventListener("change", () => {
-      placement.fieldType = fmt.value;
+      setConceptFieldType(state, concept.id, fmt.value);
     });
 
     const remove = document.createElement("button");
@@ -568,7 +595,7 @@ export function mountBrainstormFlow({
     const items = itemConcepts(state);
     if (!items.length) return;
     if (items.length === 1) {
-      placeScalar(state, concept.id, items[0].id, suggestFieldType(concept.label));
+      placeScalar(state, concept.id, items[0].id, conceptFieldType(concept));
       render();
       return;
     }
@@ -577,7 +604,7 @@ export function mountBrainstormFlow({
       items.map((item) => ({
         label: item.label,
         onPick: () => {
-          placeScalar(state, concept.id, item.id, suggestFieldType(concept.label));
+          placeScalar(state, concept.id, item.id, conceptFieldType(concept));
           render();
         },
       }))
@@ -588,7 +615,7 @@ export function mountBrainstormFlow({
     const detailItems = scalarsAvailableForRecord(state, entityId).map((concept) => ({
       label: concept.label,
       onPick: () => {
-        const res = placeScalar(state, concept.id, entityId, suggestFieldType(concept.label));
+        const res = placeScalar(state, concept.id, entityId, conceptFieldType(concept));
         if (res.error) alert(res.error);
         else render();
       },

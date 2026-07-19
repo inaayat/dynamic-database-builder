@@ -248,6 +248,10 @@ body {
   border-color: var(--accent);
 }
 
+.app-workspace-create-select {
+  cursor: pointer;
+}
+
 .app-workspace-create-templates {
   display: flex;
   flex-direction: column;
@@ -2095,6 +2099,10 @@ main {
 .brainstorm-concept-label {
   font-size: var(--fs-md);
   font-weight: 500;
+}
+
+.brainstorm-concept-format {
+  max-width: 8.5rem;
 }
 
 .brainstorm-toggle--chip {

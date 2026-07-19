@@ -1,6 +1,5 @@
 import { mountAppWorkspaceBar } from "./app-workspaces.js";
 import { initDesignTab } from "./design/design-tab.js";
-import { backupToGitHub } from "./schema-client.js?v=2";
 import { mountCustomizePanel } from "./views/customize-panel.js";
 import { renderGridView } from "./views/grid-view.js";
 import { ensureViewShape } from "./view-columns.js";
@@ -242,29 +241,7 @@ function renderViewTabs(switchToFirst = true) {
         alert(err.message || "Export failed");
       }
     });
-    const backupBtn = document.createElement("button");
-    backupBtn.type = "button";
-    backupBtn.className = "btn btn-sm";
-    backupBtn.textContent = "Backup to GitHub";
-    backupBtn.title = "Copy workspaces to your backup git repo and push";
-    backupBtn.addEventListener("click", async () => {
-      backupBtn.disabled = true;
-      const prev = backupBtn.textContent;
-      backupBtn.textContent = "Backing up…";
-      try {
-        const data = await backupToGitHub();
-        backupBtn.textContent = data.committed ? "Backed up ✓" : "Up to date ✓";
-        setTimeout(() => {
-          backupBtn.textContent = prev;
-        }, 2500);
-      } catch (err) {
-        alert(err.message || "Backup failed.");
-        backupBtn.textContent = prev;
-      } finally {
-        backupBtn.disabled = false;
-      }
-    });
-    exportBar.append(jsonBtn, xlsxBtn, backupBtn);
+    exportBar.append(jsonBtn, xlsxBtn);
   }
 
   if (schema.views?.length && switchToFirst) showView(schema.views[0].id);

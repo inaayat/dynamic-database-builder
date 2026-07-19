@@ -105,9 +105,13 @@ export function suggestKind(label) {
   return "scalar";
 }
 
-export function suggestFieldType(label) {
+export function suggestFieldType(label, defaultType = "text") {
   const lower = label.trim().toLowerCase();
-  return FIELD_TYPE_HINTS[lower] || "text";
+  return FIELD_TYPE_HINTS[lower] || defaultType;
+}
+
+export function defaultFieldTypeFromSchema(schema) {
+  return schema?.format_conventions?.default_field_type || "text";
 }
 
 export function parseChipInput(text) {
@@ -299,16 +303,28 @@ export function addDetailOnRecord(state, label, entityId, fieldType) {
   );
 }
 
-export function placeScalar(state, conceptId, entityId, fieldType) {
+export function setConceptFieldType(state, conceptId, fieldType) {
+  const concept = state.concepts.find((c) => c.id === conceptId);
+  if (!concept) return;
+  concept.fieldType = fieldType;
+  state.placements
+    .filter((p) => p.conceptId === conceptId && isScalarPlacement(p))
+    .forEach((p) => {
+      p.fieldType = fieldType;
+    });
+}
+
+export function placeScalar(state, conceptId, entityId, fieldType, defaultType = "text") {
   if (scalarOnRecord(state, conceptId, entityId)) return { error: "Already on this record." };
+  const concept = state.concepts.find((c) => c.id === conceptId);
+  const resolvedType =
+    fieldType ||
+    concept?.fieldType ||
+    suggestFieldType(concept?.label || "", defaultType);
   state.placements.push({
     conceptId,
     entityId,
-    fieldType:
-      fieldType ||
-      suggestFieldType(
-        state.concepts.find((c) => c.id === conceptId)?.label || ""
-      ),
+    fieldType: resolvedType,
   });
   return { ok: true };
 }
@@ -376,7 +392,10 @@ export function compileToSchema(state, baseSchema) {
 
     const entity = schema.entity_types[entityId];
     const fieldSlug = slugify(concept.label);
-    const fieldType = p.fieldType || suggestFieldType(concept.label);
+    const fieldType =
+      p.fieldType ||
+      concept.fieldType ||
+      suggestFieldType(concept.label, defaultFieldTypeFromSchema(baseSchema));
 
     if (fieldSlug === "title" && entity?.fields?.title) {
       entity.fields.title.editor = entity.fields.title.editor || {};

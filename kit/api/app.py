@@ -20,7 +20,6 @@ from kit.auth.neon import (
     require_user,
     validate_neon_token,
 )
-from kit.backup.github import BackupConfigError, backup_workspaces_to_git
 from kit.engine.db import connect, read_meta
 from kit.engine.dialect import use_postgres
 from kit.engine.migrations import apply_migrations, diff_schema
@@ -159,9 +158,15 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
     def create_workspace(body: dict[str, Any]) -> dict:
         title = (body.get("title") or "").strip() or "Workspace"
         template = body.get("template") or "blank"
+        format_type = (body.get("format_type") or "").strip() or None
         store: WorkspaceStore = app.state.workspace_store
         try:
-            created = store.create(title=title, template=template, set_active=True)
+            created = store.create(
+                title=title,
+                template=template,
+                default_field_type=format_type,
+                set_active=True,
+            )
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
         payload = _reload_after_workspace_change(app)
@@ -334,20 +339,6 @@ def create_app(loader: Optional[SchemaLoader] = None) -> FastAPI:
             "source": sl.source,
             "auth_enabled": auth_enabled(),
         }
-
-    @app.post("/api/backup/github")
-    def backup_to_github() -> dict:
-        try:
-            result = backup_workspaces_to_git(
-                ROOT,
-                runtime=app.state.runtime,
-                push=True,
-            )
-        except BackupConfigError as exc:
-            raise HTTPException(400, str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(500, str(exc)) from exc
-        return result.to_dict()
 
     @app.get("/")
     def editor() -> FileResponse:

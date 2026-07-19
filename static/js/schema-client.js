@@ -89,11 +89,13 @@ export async function listWorkspaces() {
   return res.json();
 }
 
-export async function createWorkspace({ title, template = "blank" }) {
+export async function createWorkspace({ title, template = "blank", formatType } = {}) {
+  const body = { title, template };
+  if (formatType) body.format_type = formatType;
   const res = await fetch("/api/workspaces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, template }),
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
@@ -125,14 +127,5 @@ export async function deleteWorkspace(workspaceId) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(formatApiDetail(data.detail || data.message) || `HTTP ${res.status}`);
-  return data;
-}
-
-export async function backupToGitHub() {
-  const res = await fetch("/api/backup/github", { method: "POST" });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(formatApiDetail(data.detail || data.message || data.error) || `HTTP ${res.status}`);
-  }
   return data;
 }

@@ -7,6 +7,7 @@ import {
   listWorkspaces,
   startOverWorkspace,
 } from "./schema-client.js?v=2";
+import { FORMAT_OPTIONS } from "./design/brainstorm.js";
 
 export function mountAppWorkspaceBar({ mount, onChange, variant = "sidebar" }) {
   if (variant === "sidebar") {
@@ -32,9 +33,23 @@ function mountCreateForm({ onSubmit, onCancel }) {
   const nameInput = document.createElement("input");
   nameInput.type = "text";
   nameInput.className = "app-workspace-create-input";
-  nameInput.placeholder = "e.g. AMC A-List Tracking";
+  nameInput.placeholder = "e.g. diary";
   nameInput.autocomplete = "off";
   nameLabel.append(nameInput);
+
+  const formatLabel = document.createElement("label");
+  formatLabel.className = "app-workspace-create-label";
+  formatLabel.textContent = "Format type";
+  const formatSelect = document.createElement("select");
+  formatSelect.className = "app-workspace-create-input app-workspace-create-select";
+  FORMAT_OPTIONS.forEach((opt) => {
+    const option = document.createElement("option");
+    option.value = opt.type;
+    option.textContent = opt.label;
+    if (opt.type === "longtext") option.selected = true;
+    formatSelect.appendChild(option);
+  });
+  formatLabel.append(formatSelect);
 
   const errorEl = document.createElement("p");
   errorEl.className = "app-workspace-create-error muted";
@@ -52,13 +67,14 @@ function mountCreateForm({ onSubmit, onCancel }) {
   createBtn.textContent = "Create";
   actions.append(cancelBtn, createBtn);
 
-  panel.append(title, nameLabel, errorEl, actions);
+  panel.append(title, nameLabel, formatLabel, errorEl, actions);
 
   function show() {
     panel.hidden = false;
     errorEl.hidden = true;
     errorEl.textContent = "";
     nameInput.value = "";
+    formatSelect.value = "longtext";
     setTimeout(() => nameInput.focus(), 0);
   }
 
@@ -72,6 +88,7 @@ function mountCreateForm({ onSubmit, onCancel }) {
     createBtn.disabled = busy;
     cancelBtn.disabled = busy;
     nameInput.disabled = busy;
+    formatSelect.disabled = busy;
   }
 
   function showError(message) {
@@ -88,7 +105,7 @@ function mountCreateForm({ onSubmit, onCancel }) {
     }
     setBusy(true);
     try {
-      await onSubmit({ title });
+      await onSubmit({ title, formatType: formatSelect.value });
       hide();
     } catch (err) {
       showError(err.message || "Could not create workspace.");
@@ -145,8 +162,8 @@ function mountBar({ mount, onChange }) {
   row.append(label, select, newBtn, startOverBtn);
 
   const createForm = mountCreateForm({
-    onSubmit: async ({ title }) => {
-      const data = await createWorkspace({ title, template: "blank" });
+    onSubmit: async ({ title, formatType }) => {
+      const data = await createWorkspace({ title, template: "blank", formatType });
       state.active_id = data.workspace?.id || data.active_id;
       await refresh(state, renderSelect);
       onChange?.(data, { created: true });
@@ -207,8 +224,8 @@ function mountSidebar({ mount, onChange }) {
   list.setAttribute("aria-label", "Workspaces");
 
   const createForm = mountCreateForm({
-    onSubmit: async ({ title }) => {
-      const data = await createWorkspace({ title, template: "blank" });
+    onSubmit: async ({ title, formatType }) => {
+      const data = await createWorkspace({ title, template: "blank", formatType });
       state.active_id = data.workspace?.id || data.active_id;
       await refresh(state, renderList);
       onChange?.(data, { created: true });
