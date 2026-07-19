@@ -20,6 +20,36 @@ def _conventions(package: SitePackage) -> Optional[dict]:
     return None
 
 
+def _primary_key_name(entity: EntityType) -> str:
+    pk = entity.primary_key
+    if isinstance(pk, list):
+        return pk[0]
+    return pk or "id"
+
+
+def _ensure_row_id(
+    conn,
+    entity: EntityType,
+    entity_id: str,
+    data: dict,
+    table: str,
+) -> None:
+    pk_name = _primary_key_name(entity)
+    if data.get(pk_name):
+        return
+    pk_def = entity.fields.get(pk_name, {})
+    pk_type = pk_def.get("type", "string")
+    if pk_type == "string":
+        prefix = re.sub(r"[^a-z0-9]+", "-", entity_id.lower()).strip("-") or "row"
+        data[pk_name] = f"{prefix}-{uuid.uuid4().hex[:8]}"
+        return
+    if pk_type == "integer":
+        row = conn.execute(
+            f"SELECT COALESCE(MAX({q(pk_name)}), 0) + 1 AS next_id FROM {table}"
+        ).fetchone()
+        data[pk_name] = row["next_id"]
+
+
 def list_rows(
     conn,
     package: SitePackage,
@@ -153,6 +183,8 @@ def create_row(
                 (container_id,),
             ).fetchone()
             data["id"] = row["next_id"]
+
+    _ensure_row_id(conn, entity, entity_id, data, table)
 
     serialized = row_from_api(entity.fields, data, _conventions(package))
     cols = list(serialized.keys())

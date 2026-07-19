@@ -11,6 +11,10 @@ export const FIELD_TYPES = [
   "number",
   "boolean",
   "date",
+  "datetime",
+  "currency",
+  "percent",
+  "rating",
   "string",
 ];
 
@@ -64,6 +68,32 @@ export function defaultFieldDef(type, label) {
       return {
         ...base,
         sqlite: { column: "TEXT", nullable: true },
+        editor: { column: true, header, widget: "date" },
+      };
+    case "datetime":
+      return {
+        ...base,
+        sqlite: { column: "TEXT", nullable: true },
+        editor: { column: true, header, widget: "datetime" },
+      };
+    case "currency":
+      return {
+        ...base,
+        sqlite: { column: "REAL", nullable: true },
+        editor: { column: true, header, widget: "currency", currency: "USD" },
+      };
+    case "percent":
+      return {
+        ...base,
+        sqlite: { column: "REAL", nullable: true },
+        editor: { column: true, header, widget: "percent" },
+      };
+    case "rating":
+      return {
+        ...base,
+        sqlite: { column: "INTEGER", nullable: true },
+        editor: { column: true, header, widget: "rating" },
+        validation: { min: 1, max: 5 },
       };
     default:
       return {

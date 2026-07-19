@@ -5,6 +5,7 @@ import {
   friendlyFieldType,
   promptAddInfo,
   updateFieldLabel,
+  updateFieldOptions,
   updateFieldType,
   updateViewLabel,
 } from "../design/design-actions.js";
@@ -120,6 +121,9 @@ export function mountCustomizePanel({
       if (!field || field.design_only || isPrimaryKey(entity, col.field)) return;
       if (field.type === "item_link" || field.type === "foreign_key") return;
 
+      const block = document.createElement("div");
+      block.className = "customize-field-block";
+
       const row = document.createElement("div");
       row.className = "customize-field-row";
 
@@ -174,7 +178,35 @@ export function mountCustomizePanel({
       });
 
       row.append(nameInput, typeSel);
-      wrap.appendChild(row);
+      block.appendChild(row);
+
+      if (field.type === "enum") {
+        const optionsInput = document.createElement("input");
+        optionsInput.type = "text";
+        optionsInput.className = "ie-input customize-field-options";
+        optionsInput.value = (field.options || []).join(", ");
+        optionsInput.placeholder = "Choices (comma-separated)";
+        optionsInput.title = "Choice list options";
+        optionsInput.addEventListener("change", async () => {
+          const result = updateFieldOptions(entity, col.field, optionsInput.value);
+          if (result?.error) {
+            alert(result.error);
+            optionsInput.value = (field.options || []).join(", ");
+            return;
+          }
+          try {
+            const data = await applySchema(schema);
+            setSchema(data.schema);
+            onViewRefresh();
+            render();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+        block.appendChild(optionsInput);
+      }
+
+      wrap.appendChild(block);
     });
 
     return wrap;

@@ -257,23 +257,6 @@ export function mountBrainstormFlow({
       toggle.appendChild(btn);
     });
 
-    const parts = [label, toggle];
-    if (kind === "scalar") {
-      const fmt = document.createElement("select");
-      fmt.className = "brainstorm-format-select brainstorm-concept-format";
-      FORMAT_OPTIONS.forEach((opt) => {
-        const o = document.createElement("option");
-        o.value = opt.type;
-        o.textContent = opt.label;
-        o.selected = conceptFieldType(concept) === opt.type;
-        fmt.appendChild(o);
-      });
-      fmt.addEventListener("change", () => {
-        setConceptFieldType(state, concept.id, fmt.value);
-      });
-      parts.push(fmt);
-    }
-
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "brainstorm-chip-remove";
@@ -297,7 +280,7 @@ export function mountBrainstormFlow({
       row.title = "Drag onto another record to store it as a value";
     }
 
-    row.append(...parts, remove);
+    row.append(label, toggle, remove);
     return row;
   }
 

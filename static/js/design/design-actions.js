@@ -29,9 +29,13 @@ export const FIELD_CATALOG = [
   { type: "enum", label: "Choice list", hint: "Fixed options — status, priority" },
   { type: "url", label: "Link (URL)", hint: "Website address" },
   { type: "date", label: "Date", hint: "Calendar day" },
+  { type: "datetime", label: "Timestamp", hint: "Date and time — logged at, meal time" },
   { type: "boolean", label: "Checkbox", hint: "Yes / no" },
   { type: "integer", label: "Whole number", hint: "Count" },
   { type: "number", label: "Number", hint: "Decimal values" },
+  { type: "currency", label: "Currency", hint: "Money — price, cost" },
+  { type: "percent", label: "Percent", hint: "0–100 with % display" },
+  { type: "rating", label: "Rating", hint: "Score from 1 to 5" },
 ];
 
 export function friendlyFieldType(type) {
@@ -163,6 +167,12 @@ export function updateFieldType(entity, fieldName, newType) {
 
   const header = field.editor?.header || fieldName;
   const next = defaultFieldDef(newType, header);
+  if (newType === "enum" && field.type === "enum" && field.options?.length) {
+    next.options = [...field.options];
+  }
+  if (newType === "rating" && field.type === "rating" && field.validation) {
+    next.validation = { ...field.validation };
+  }
   next.editor = {
     ...next.editor,
     column: field.editor?.column ?? next.editor?.column,
@@ -239,7 +249,26 @@ export function convertFieldToLink(schema, entityId, fieldName, opts) {
   });
 }
 
-export function addValueToEntity(schema, entityId, { label, type }) {
+export function parseChoiceOptions(text) {
+  return String(text || "")
+    .split(/[\n,]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+export function updateFieldOptions(entity, fieldName, options) {
+  const field = entity.fields?.[fieldName];
+  if (!field) return { error: "Field not found." };
+  if (field.type !== "enum") return { error: "Not a choice field." };
+  const normalized = (Array.isArray(options) ? options : parseChoiceOptions(options))
+    .map((opt) => String(opt).trim())
+    .filter(Boolean);
+  if (!normalized.length) return { error: "Add at least one choice." };
+  field.options = normalized;
+  return { ok: true };
+}
+
+export function addValueToEntity(schema, entityId, { label, type, options }) {
   const entity = schema.entity_types[entityId];
   if (!entity) return { error: "Type not found." };
   const trimmed = label?.trim();
@@ -247,6 +276,9 @@ export function addValueToEntity(schema, entityId, { label, type }) {
   const name = slugify(trimmed);
   if (entity.fields[name]) return { error: "That field already exists." };
   entity.fields[name] = defaultFieldDef(type, trimmed);
+  if (type === "enum" && options?.length) {
+    entity.fields[name].options = options;
+  }
   const gridView = (schema.views || []).find((v) => v.type === "grid" && v.entity === entityId);
   if (gridView && entity.fields[name].editor?.column) {
     addPrimaryColumn(gridView, schema, name);
@@ -428,6 +460,22 @@ export async function promptAddInfo(schema, entityId) {
       valueBlock.id = "value-block";
       const typeCards = document.createElement("div");
       typeCards.className = "choice-cards";
+      valueBlock.appendChild(typeCards);
+
+      const enumOptionsRow = document.createElement("label");
+      enumOptionsRow.className = "design-form-row";
+      enumOptionsRow.id = "enum-options-row";
+      enumOptionsRow.innerHTML = "<span>Choices</span>";
+      const enumOptionsInput = document.createElement("input");
+      enumOptionsInput.type = "text";
+      enumOptionsInput.id = "enum-options-input";
+      enumOptionsInput.placeholder = "e.g. Homemade, Restaurant, Takeout";
+      enumOptionsRow.appendChild(enumOptionsInput);
+
+      function syncEnumOptionsRow() {
+        enumOptionsRow.hidden = chosenType !== "enum";
+      }
+
       FIELD_CATALOG.forEach((f) => {
         const card = document.createElement("button");
         card.type = "button";
@@ -437,10 +485,12 @@ export async function promptAddInfo(schema, entityId) {
           chosenType = f.type;
           typeCards.querySelectorAll(".choice-card").forEach((c) => c.classList.remove("selected"));
           card.classList.add("selected");
+          syncEnumOptionsRow();
         });
         typeCards.appendChild(card);
       });
-      valueBlock.appendChild(typeCards);
+      valueBlock.append(enumOptionsRow);
+      syncEnumOptionsRow();
       root.appendChild(valueBlock);
 
       const linkBlock = document.createElement("div");
@@ -533,7 +583,18 @@ export async function promptAddInfo(schema, entityId) {
           alert("That field already exists.");
           return false;
         }
-        return { kind: "value", name, label, type: chosenType };
+        const payload = { kind: "value", name, label, type: chosenType };
+        if (chosenType === "enum") {
+          const options = parseChoiceOptions(
+            root.querySelector("#enum-options-input")?.value || ""
+          );
+          if (!options.length) {
+            alert("Enter at least one choice (comma-separated).");
+            return false;
+          }
+          payload.options = options;
+        }
+        return payload;
       }
 
       const targetMode = root.querySelector("#link-target-mode").value;
@@ -569,7 +630,11 @@ export async function promptAddInfo(schema, entityId) {
   if (!result) return null;
 
   if (result.kind === "value") {
-    return addValueToEntity(schema, entityId, result);
+    return addValueToEntity(schema, entityId, {
+      label: result.label,
+      type: result.type,
+      options: result.options,
+    });
   }
 
   return addLinkToEntity(schema, entityId, {

@@ -12,9 +12,16 @@ import {
 import { columnLabel, getViewColumns } from "../view-columns.js";
 import { openChipPicker } from "../widgets/chip-picker.js";
 import {
+  formatFieldDisplay,
   renderBoxStack,
   renderBulletEditor,
+  renderCurrencyInput,
+  renderDateInput,
+  renderDatetimeInput,
   renderEnumSelect,
+  renderNumberInput,
+  renderPercentInput,
+  renderRatingInput,
   renderTextInput,
 } from "../widgets/field-renderers.js";
 
@@ -62,12 +69,23 @@ export async function renderGridView({
     addBtn.className = "btn btn-primary";
     addBtn.textContent = `+ ${entityLabel}`;
     addBtn.addEventListener("click", async () => {
-      await fetch(entityListUrl(entityId, containerId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(defaultNewRow(schema, entityId)),
-      });
-      renderGridView({ container, schema, notebookId, view });
+      addBtn.disabled = true;
+      try {
+        const res = await fetch(entityListUrl(entityId, containerId), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(defaultNewRow(schema, entityId)),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          throw new Error(detail || `HTTP ${res.status}`);
+        }
+        await renderGridView({ container, schema, notebookId, view });
+      } catch (err) {
+        alert(err.message || "Could not create row.");
+      } finally {
+        addBtn.disabled = false;
+      }
     });
     toolbar.append(addBtn, status);
     container.appendChild(toolbar);
@@ -140,7 +158,7 @@ export async function renderGridView({
         } else if (col.source === "primary") {
           const fdef = fields[col.field] || {};
           if (col.mode === "view") {
-            td.textContent = row[col.field] ?? "—";
+            td.textContent = formatFieldDisplay(row[col.field], fdef);
           } else {
             const onChange = (val) => {
               payloads[col.field] = val;
@@ -150,8 +168,26 @@ export async function renderGridView({
               td.appendChild(renderBulletEditor(row[col.field], onChange));
             } else if (fdef.type === "enum") {
               td.appendChild(renderEnumSelect(row[col.field], fdef.options, onChange));
+            } else if (fdef.type === "datetime") {
+              td.appendChild(renderDatetimeInput(row[col.field], onChange));
+            } else if (fdef.type === "date") {
+              td.appendChild(renderDateInput(row[col.field], onChange));
+            } else if (fdef.type === "currency") {
+              td.appendChild(renderCurrencyInput(row[col.field], onChange, fdef));
+            } else if (fdef.type === "percent") {
+              td.appendChild(renderPercentInput(row[col.field], onChange));
+            } else if (fdef.type === "rating") {
+              td.appendChild(renderRatingInput(row[col.field], onChange, fdef));
+            } else if (fdef.type === "number" || fdef.type === "integer") {
+              td.appendChild(renderNumberInput(row[col.field], onChange));
             } else if (fdef.editor?.widget === "box_stack" || fdef.type === "multiline_text") {
               td.appendChild(renderBoxStack(row[col.field], onChange));
+            } else if (fdef.type === "boolean") {
+              td.appendChild(
+                renderEnumSelect(row[col.field] ? "Yes" : "No", ["No", "Yes"], (val) => {
+                  onChange(val === "Yes" ? 1 : 0);
+                })
+              );
             } else {
               td.appendChild(renderTextInput(row[col.field], onChange));
             }

@@ -38,8 +38,12 @@ export const FORMAT_OPTIONS = [
   { type: "text", label: "Short text" },
   { type: "longtext", label: "Long text" },
   { type: "date", label: "Date" },
+  { type: "datetime", label: "Timestamp" },
   { type: "enum", label: "Choice" },
   { type: "number", label: "Number" },
+  { type: "currency", label: "Currency" },
+  { type: "percent", label: "Percent" },
+  { type: "rating", label: "Rating" },
   { type: "boolean", label: "Checkbox" },
   { type: "url", label: "URL" },
   { type: "bullet_list", label: "Bullets" },
@@ -54,7 +58,7 @@ export const CARDINALITY_LABELS = {
 const RECORD_HINTS =
   /^(note|tag|student|class|teacher|subject|notebook|reference|project|task|person|contact|book|article|category|folder|rubric|theme|resource)s?$/i;
 const DETAIL_HINTS =
-  /^(title|name|description|body|summary|status|due\s*date|date|link|url|notes|content|priority|type|email|phone|bio)$/i;
+  /^(title|name|description|body|summary|status|due\s*date|date|time|timestamp|link|url|notes|content|priority|type|email|phone|bio|price|cost|rating|score|percent)$/i;
 
 const FIELD_TYPE_HINTS = {
   description: "longtext",
@@ -65,12 +69,22 @@ const FIELD_TYPE_HINTS = {
   bio: "longtext",
   date: "date",
   "due date": "date",
+  time: "datetime",
+  timestamp: "datetime",
+  "logged at": "datetime",
   status: "enum",
   priority: "enum",
   link: "url",
   url: "url",
   email: "url",
   type: "enum",
+  price: "currency",
+  cost: "currency",
+  amount: "currency",
+  percent: "percent",
+  percentage: "percent",
+  rating: "rating",
+  score: "rating",
 };
 
 const CARDINALITY_TO_STORAGE = {

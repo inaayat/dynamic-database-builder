@@ -667,10 +667,21 @@ main {
   gap: 0.4rem;
 }
 
+.customize-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
 .customize-field-row {
   display: flex;
   gap: 0.35rem;
   align-items: center;
+}
+
+.customize-field-options {
+  width: 100%;
+  font-size: var(--fs-sm);
 }
 
 .customize-field-row .ie-input {
@@ -914,6 +925,24 @@ main {
   line-height: var(--lh);
   background: var(--bg);
   color: var(--text);
+}
+
+.cell-input-affix {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.cell-input-affix .cell-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.cell-input-prefix,
+.cell-input-suffix {
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
 }
 
 .box-stack textarea { resize: vertical; min-height: 2rem; }
@@ -2342,7 +2371,7 @@ main {
 
 .brainstorm-record-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 0.75rem;
 }
 
@@ -2375,7 +2404,8 @@ main {
 
 .brainstorm-value-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0.3rem 0.45rem;
   background: var(--brainstorm-chip);
@@ -2395,13 +2425,15 @@ main {
 
 .brainstorm-value-name {
   font-weight: 500;
+  flex: 1 1 5rem;
   min-width: 0;
+  word-break: break-word;
 }
 
 .brainstorm-value-meta,
 .brainstorm-value-kind {
   font-size: var(--fs-xs);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .brainstorm-value-meta {
@@ -2569,8 +2601,9 @@ main {
 
 .brainstorm-format-select,
 .brainstorm-cardinality-select {
-  flex: 1;
+  flex: 1 1 8rem;
   min-width: 0;
+  max-width: 100%;
   font-size: var(--fs-xs);
   padding: 0.15rem 0.25rem;
   border: 1px solid var(--border);
