@@ -491,3 +491,122 @@ export function summarizeBrainstorm(state) {
   const linkCount = state.placements.filter((p) => isRecordLinkPlacement(p)).length;
   return { itemCount: items.length, scalarCount: scalars.length, linkCount };
 }
+
+/** Rebuild brainstorm state from an applied workspace schema for post-creation editing. */
+export function importSchemaToBrainstormState(schema) {
+  const state = createBrainstormState();
+  const entityToConcept = new Map();
+
+  for (const [entityId, entity] of Object.entries(schema.entity_types || {})) {
+    const concept = createConcept(entity.label || entityId);
+    if (!concept) continue;
+    concept.kind = "item";
+    state.concepts.push(concept);
+    entityToConcept.set(entityId, concept.id);
+  }
+
+  for (const [entityId, entity] of Object.entries(schema.entity_types || {})) {
+    const itemConceptId = entityToConcept.get(entityId);
+    if (!itemConceptId) continue;
+
+    for (const [fieldName, field] of Object.entries(entity.fields || {})) {
+      if (fieldName === "id") continue;
+      if (field.type === "foreign_key" || field.type === "item_link") continue;
+      if (field.design_only) continue;
+
+      const label = field.editor?.header || field.label || fieldName;
+      const fieldType = mapFieldTypeForImport(field);
+
+      if (fieldName === "title") {
+        const itemConcept = state.concepts.find((c) => c.id === itemConceptId);
+        const identityLabel = field.editor?.header || itemConcept?.label;
+        if (identityLabel && itemConcept) itemConcept.label = identityLabel;
+        if (fieldType !== "text") {
+          const scalar = createConcept(label);
+          if (!scalar) continue;
+          scalar.kind = "scalar";
+          scalar.fieldType = fieldType;
+          state.concepts.push(scalar);
+          state.placements.push({
+            conceptId: scalar.id,
+            entityId: itemConceptId,
+            fieldType,
+          });
+        }
+        continue;
+      }
+
+      const scalar = createConcept(label);
+      if (!scalar) continue;
+      scalar.kind = "scalar";
+      scalar.fieldType = fieldType;
+      state.concepts.push(scalar);
+      state.placements.push({
+        conceptId: scalar.id,
+        entityId: itemConceptId,
+        fieldType,
+      });
+    }
+  }
+
+  for (const rel of schema.relationships || []) {
+    const storage =
+      typeof rel.storage === "string"
+        ? rel.storage
+        : rel.type === "containment"
+          ? "containment"
+          : rel.type === "hierarchy"
+            ? "containment"
+            : "junction";
+    const fromEntity = rel.from;
+    const toEntity = rel.to;
+    const fromConcept = entityToConcept.get(fromEntity);
+    const toConcept = entityToConcept.get(toEntity);
+    if (!fromConcept || !toConcept) continue;
+
+    if (storage === "containment") {
+      state.placements.push({
+        entityId: fromConcept,
+        linkTargetId: toConcept,
+        cardinality: "owned",
+      });
+    } else if (storage === "assignment") {
+      state.placements.push({
+        entityId: fromConcept,
+        linkTargetId: toConcept,
+        cardinality: "one",
+      });
+    } else {
+      state.placements.push({
+        entityId: toConcept,
+        linkTargetId: fromConcept,
+        cardinality: "many",
+      });
+    }
+  }
+
+  return state;
+}
+
+function mapFieldTypeForImport(field) {
+  const type = field.type;
+  const widget = field.editor?.widget;
+  if (widget === "box_stack" || type === "multiline_text") return "longtext";
+  const map = {
+    text: "text",
+    longtext: "longtext",
+    multiline_text: "longtext",
+    bullet_list: "bullet_list",
+    enum: "enum",
+    date: "date",
+    datetime: "datetime",
+    boolean: "boolean",
+    number: "number",
+    integer: "number",
+    currency: "currency",
+    percent: "percent",
+    rating: "rating",
+    url: "url",
+  };
+  return map[type] || "text";
+}

@@ -42,8 +42,9 @@ export function mountBrainstormFlow({
   baseSchema,
   onSchemaChange,
   onApply,
+  initialState = null,
 }) {
-  const state = createBrainstormState();
+  const state = initialState || createBrainstormState();
   let stepIndex = 0;
   let workingSchema = null;
   let shouldFocusInput = false;

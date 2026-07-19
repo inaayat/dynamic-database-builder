@@ -3,6 +3,7 @@ import {
   validateSchema,
 } from "../schema-client.js?v=2";
 import { mountBrainstormFlow } from "./brainstorm-flow.js";
+import { importSchemaToBrainstormState } from "./brainstorm.js";
 import { PAGE_INTRO, helpParagraph } from "./help-text.js";
 
 export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
@@ -113,9 +114,13 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   function renderBrainstorm() {
     intro.hidden = true;
+    const entityCount = Object.keys(workingSchema.entity_types || {}).length;
+    const initialState =
+      entityCount > 0 ? importSchemaToBrainstormState(workingSchema) : undefined;
     brainstormApi = mountBrainstormFlow({
       container: main,
       baseSchema: workingSchema,
+      initialState,
       onSchemaChange(updated) {
         workingSchema = updated;
         onSchemaChange(updated);
@@ -144,8 +149,27 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
     const hint = document.createElement("p");
     hint.className = "design-help";
     hint.textContent =
-      "Adjust tabs and fields in Workspace → Customize. Use Start over in the sidebar to run brainstorm again.";
+      "Edit the full design below, or fine-tune tabs and columns in Workspace → Customize.";
     panel.appendChild(hint);
+
+    const actions = document.createElement("div");
+    actions.className = "design-configured-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn-primary";
+    editBtn.textContent = "Edit design";
+    editBtn.addEventListener("click", () => {
+      brainstormMode = true;
+      intro.hidden = true;
+      statusEl.textContent = "";
+      messages.hidden = true;
+      renderMain();
+    });
+    const customizeHint = document.createElement("span");
+    customizeHint.className = "muted design-configured-hint";
+    customizeHint.textContent = "Start over in the sidebar resets everything.";
+    actions.append(editBtn, customizeHint);
+    panel.appendChild(actions);
 
     const list = document.createElement("ul");
     list.className = "design-configured-list";
