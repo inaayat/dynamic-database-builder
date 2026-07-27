@@ -26,9 +26,9 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview, onApplie
   const path = document.createElement("ol");
   path.className = "design-path";
   path.innerHTML = `
-    <li><strong>1. Name</strong> what you track</li>
-    <li><strong>2. Shape</strong> fields and links</li>
-    <li><strong>3. Browse</strong> and add records</li>
+    <li><strong>1. Concepts</strong> — records, details, types</li>
+    <li><strong>2. Build</strong> — place details on records</li>
+    <li><strong>3. Review</strong> &amp; <strong>4. Tabs</strong></li>
   `;
   intro.appendChild(path);
 

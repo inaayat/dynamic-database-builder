@@ -1,4 +1,4 @@
-/** Brainstorm flow UI — Build → Review → Tabs. */
+/** Brainstorm flow UI — Concepts → Build → Review → Tabs. */
 
 import {
   addDetailOnRecord,
@@ -35,7 +35,7 @@ import {
 } from "./brainstorm.js";
 import { renderWorkspaceTabsPanel } from "./workspace-tabs-panel.js";
 
-const STEPS = ["setup", "review", "tabs"];
+const STEPS = ["concepts", "build", "review", "tabs"];
 
 export function mountBrainstormFlow({
   container,
@@ -166,7 +166,8 @@ export function mountBrainstormFlow({
     canvas.innerHTML = "";
     canvas.className = "brainstorm-canvas brainstorm-canvas--" + step;
 
-    if (step === "setup") renderSetup(canvas);
+    if (step === "concepts") renderConcepts(canvas);
+    else if (step === "build") renderBuild(canvas);
     else if (step === "review") renderReview(canvas);
     else if (step === "tabs") renderTabs(canvas);
   }
@@ -178,7 +179,7 @@ export function mountBrainstormFlow({
 
   nextBtn.addEventListener("click", () => {
     if (!stepReady(currentStep(), state)) return;
-    if (currentStep() === "setup") commitSuggestedKinds(state);
+    if (currentStep() === "concepts") commitSuggestedKinds(state);
     if (currentStep() === "tabs") {
       syncSchema();
       onApply?.();
@@ -196,7 +197,7 @@ export function mountBrainstormFlow({
         (c) => c.label.toLowerCase() === label.toLowerCase()
       );
       if (dup) continue;
-      const c = createConcept(label);
+      const c = createConcept(label, fieldTypeDefault());
       if (c) {
         state.concepts.push(c);
         added = true;
@@ -268,7 +269,7 @@ export function mountBrainstormFlow({
     }
   }
 
-  function renderConceptRow(concept) {
+  function renderConceptRow(concept, { allowDrag = false } = {}) {
     const row = document.createElement("div");
     row.className = "brainstorm-concept-row";
     row.dataset.conceptId = concept.id;
@@ -301,6 +302,30 @@ export function mountBrainstormFlow({
       toggle.appendChild(btn);
     });
 
+    const fmt = document.createElement("select");
+    fmt.className = "brainstorm-format-select brainstorm-concept-format";
+    fmt.title =
+      kind === "item"
+        ? "Primary field type for this record"
+        : "Field type for this detail";
+    fmt.setAttribute(
+      "aria-label",
+      kind === "item" ? `Type for ${concept.label}` : `Detail type for ${concept.label}`
+    );
+    FORMAT_OPTIONS.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt.type;
+      o.textContent = opt.label;
+      o.selected = conceptFieldType(concept) === opt.type;
+      fmt.appendChild(o);
+    });
+    fmt.addEventListener("mousedown", (e) => e.stopPropagation());
+    fmt.addEventListener("click", (e) => e.stopPropagation());
+    fmt.addEventListener("change", () => {
+      setConceptFieldType(state, concept.id, fmt.value);
+      render();
+    });
+
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "brainstorm-chip-remove";
@@ -312,25 +337,26 @@ export function mountBrainstormFlow({
       render();
     });
 
-    if (kind === "scalar" && scalarHasOpenSlots(state, concept.id)) {
-      row.classList.add("brainstorm-concept-row--draggable");
-      bindDragPayload(row, `scalar:${concept.id}`);
-      row.title = "Drag onto a record below (can be on multiple records)";
+    if (allowDrag) {
+      if (kind === "scalar" && scalarHasOpenSlots(state, concept.id)) {
+        row.classList.add("brainstorm-concept-row--draggable");
+        bindDragPayload(row, `scalar:${concept.id}`);
+        row.title = "Drag onto a record below (can be on multiple records)";
+      }
+      if (kind === "item") {
+        row.classList.add("brainstorm-concept-row--draggable");
+        bindDragPayload(row, `record:${concept.id}`);
+        row.title = "Drag onto another record to store it as a value";
+      }
     }
 
-    if (kind === "item") {
-      row.classList.add("brainstorm-concept-row--draggable");
-      bindDragPayload(row, `record:${concept.id}`);
-      row.title = "Drag onto another record to store it as a value";
-    }
-
-    row.append(label, toggle, remove);
+    row.append(label, toggle, fmt, remove);
     return row;
   }
 
-  function renderSetup(root) {
+  function renderConcepts(root) {
     const page = document.createElement("div");
-    page.className = "brainstorm-setup-page";
+    page.className = "brainstorm-setup-page brainstorm-concepts-page";
 
     const inputRow = document.createElement("div");
     inputRow.className = "brainstorm-input-row brainstorm-input-row--top";
@@ -364,17 +390,11 @@ export function mountBrainstormFlow({
         el("p", "muted brainstorm-chips-empty", "Concepts you add appear here.")
       );
     } else {
-      state.concepts.forEach((c) => chipArea.appendChild(renderConceptRow(c)));
+      state.concepts.forEach((c) =>
+        chipArea.appendChild(renderConceptRow(c, { allowDrag: false }))
+      );
     }
     page.appendChild(chipArea);
-
-    const placeSection = document.createElement("section");
-    placeSection.className = "brainstorm-setup-place";
-    if (itemConcepts(state).length) {
-      renderPlace(placeSection);
-      page.appendChild(placeSection);
-    }
-
     root.appendChild(page);
 
     setTimeout(() => {
@@ -384,6 +404,24 @@ export function mountBrainstormFlow({
       }
       shouldFocusInput = false;
     }, 0);
+  }
+
+  function renderBuild(root) {
+    const page = document.createElement("div");
+    page.className = "brainstorm-setup-page brainstorm-build-page";
+
+    const summary = document.createElement("div");
+    summary.className = "brainstorm-build-summary";
+    const records = itemConcepts(state);
+    const details = state.concepts.filter((c) => effectiveKind(c) === "scalar");
+    summary.innerHTML = `<p class="brainstorm-build-summary-line"><strong>${records.length}</strong> record${records.length === 1 ? "" : "s"} · <strong>${details.length}</strong> detail${details.length === 1 ? "" : "s"}</p>`;
+    page.appendChild(summary);
+
+    const placeSection = document.createElement("section");
+    placeSection.className = "brainstorm-setup-place";
+    renderPlace(placeSection);
+    page.appendChild(placeSection);
+    root.appendChild(page);
   }
 
   function renderPlace(root) {
@@ -446,7 +484,9 @@ export function mountBrainstormFlow({
       identityName.textContent = recordIdentityLabel(item);
       const identityMeta = document.createElement("span");
       identityMeta.className = "brainstorm-value-meta muted";
-      identityMeta.textContent = "Short text";
+      const identityType = conceptFieldType(item);
+      identityMeta.textContent =
+        FORMAT_OPTIONS.find((o) => o.type === identityType)?.label || "Short text";
       identity.append(identityName, identityMeta);
       fields.appendChild(identity);
 
@@ -847,9 +887,15 @@ export function mountBrainstormFlow({
 
     itemConcepts(state).forEach((concept) => {
       const li = document.createElement("li");
-      const valueParts = [recordIdentityLabel(concept)];
+      const identityType =
+        FORMAT_OPTIONS.find((o) => o.type === conceptFieldType(concept))?.label ||
+        "Short text";
+      const valueParts = [`${recordIdentityLabel(concept)} (${identityType})`];
       scalarsOnRecord(state, concept.id).forEach(({ concept: detail }) => {
-        valueParts.push(detail.label);
+        const detailType =
+          FORMAT_OPTIONS.find((o) => o.type === conceptFieldType(detail))?.label ||
+          "Short text";
+        valueParts.push(`${detail.label} (${detailType})`);
       });
       recordsOnRecord(state, concept.id).forEach(({ concept: linked }) => {
         valueParts.push(linked.label);

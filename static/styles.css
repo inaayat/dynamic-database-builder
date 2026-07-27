@@ -2548,11 +2548,11 @@ main {
 
 .brainstorm-steps .wizard-step {
   flex: 1;
-  min-width: 7.5rem;
+  min-width: 5.75rem;
   text-align: center;
   font-size: var(--fs-sm);
   font-weight: 600;
-  padding: 0.45rem 0.85rem;
+  padding: 0.45rem 0.55rem;
 }
 
 .brainstorm-steps .wizard-step-label,
@@ -2670,6 +2670,8 @@ main {
 
 .brainstorm-concept-format {
   max-width: 8.5rem;
+  flex: 0 1 8.5rem;
+  min-width: 6.5rem;
 }
 
 .brainstorm-toggle--chip {
@@ -2715,8 +2717,23 @@ main {
   gap: 0.65rem;
 }
 
-.brainstorm-canvas--setup .brainstorm-place-layout {
+.brainstorm-canvas--setup .brainstorm-place-layout,
+.brainstorm-canvas--build .brainstorm-place-layout {
   margin-top: 0.25rem;
+}
+
+.brainstorm-build-summary {
+  margin: 0 0 0.65rem;
+}
+
+.brainstorm-build-summary-line {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.brainstorm-build-summary-line strong {
+  color: var(--text);
 }
 
 .brainstorm-chips {

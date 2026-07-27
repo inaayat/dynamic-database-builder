@@ -5,22 +5,30 @@ import {
   addValueToEntity,
   createItemType,
   createView,
+  updateFieldType,
 } from "./design-actions.js";
 import { slugify } from "./modals.js";
 
 export const STEP_COPY = {
-  setup: {
+  concepts: {
+    title: "Concepts",
+    short: "Concepts",
+    lead: "Name what you track. Mark each as Record or Detail and choose its field type.",
+    detail:
+      "Records are things you track many of (Teacher, Class). Details are values that live on records (bio, due date). You’ll place details onto records in the next step.",
+  },
+  build: {
     title: "Build",
     short: "Build",
-    lead: "Add concepts below, mark each as Record or Detail, then place details on records.",
+    lead: "Place each Detail onto one or more Records. You can also link Records to each other.",
     detail:
-      "Records are things you track many of (Teacher, Class). Details are plain values (bio, due date) — the same detail can go on multiple records.",
+      "Drag unplaced details onto a record card, or search on a card. Every Detail must sit on at least one Record before you continue.",
   },
   review: {
     title: "Review",
     short: "Review",
     lead: "Check that each record looks right before choosing Browse tabs.",
-    detail: "Each record stores a name plus the values you added. Links were created automatically.",
+    detail: "Each record stores a primary field plus the values you placed. Links were created automatically.",
   },
   tabs: {
     title: "Tabs",
@@ -105,7 +113,7 @@ export function createBrainstormState() {
   return { concepts: [], placements: [] };
 }
 
-export function createConcept(label) {
+export function createConcept(label, defaultType = "text") {
   const trimmed = label.trim();
   if (!trimmed) return null;
   const suggestedKind = suggestKind(trimmed);
@@ -114,6 +122,7 @@ export function createConcept(label) {
     label: trimmed,
     kind: "unset",
     suggestedKind,
+    fieldType: suggestFieldType(trimmed, defaultType),
   };
 }
 
@@ -222,11 +231,11 @@ export function recordIdentityLabel(itemConcept) {
 
 export function stepReady(step, state) {
   switch (step) {
-    case "setup": {
-      if (!state.concepts.length) return false;
+    case "concepts":
+      return state.concepts.length > 0 && itemConcepts(state).length > 0;
+    case "build":
       if (!itemConcepts(state).length) return false;
       return unplacedScalars(state).length === 0;
-    }
     case "review":
       return itemConcepts(state).length > 0;
     case "tabs":
@@ -239,9 +248,12 @@ export function stepReady(step, state) {
 export function stepBlockedReason(step, state) {
   if (stepReady(step, state)) return "";
   switch (step) {
-    case "setup":
+    case "concepts":
       if (!state.concepts.length) return "Add at least one concept to continue";
       if (!itemConcepts(state).length) return "Mark at least one concept as a Record";
+      return "";
+    case "build":
+      if (!itemConcepts(state).length) return "Go back and mark at least one Record";
       {
         const unplaced = unplacedScalars(state);
         if (unplaced.length) {
@@ -402,6 +414,12 @@ export function compileToSchema(state, baseSchema) {
     if (entity?.fields?.title) {
       entity.fields.title.editor = entity.fields.title.editor || {};
       entity.fields.title.editor.header = recordIdentityLabel(c);
+      const identityType =
+        c.fieldType ||
+        suggestFieldType(c.label, defaultFieldTypeFromSchema(baseSchema));
+      if (identityType && identityType !== "text") {
+        updateFieldType(entity, "title", identityType);
+      }
     }
   }
 
@@ -527,18 +545,7 @@ export function importSchemaToBrainstormState(schema) {
         const itemConcept = state.concepts.find((c) => c.id === itemConceptId);
         const identityLabel = field.editor?.header || itemConcept?.label;
         if (identityLabel && itemConcept) itemConcept.label = identityLabel;
-        if (fieldType !== "text") {
-          const scalar = createConcept(label);
-          if (!scalar) continue;
-          scalar.kind = "scalar";
-          scalar.fieldType = fieldType;
-          state.concepts.push(scalar);
-          state.placements.push({
-            conceptId: scalar.id,
-            entityId: itemConceptId,
-            fieldType,
-          });
-        }
+        if (itemConcept) itemConcept.fieldType = fieldType;
         continue;
       }
 
