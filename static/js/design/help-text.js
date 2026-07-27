@@ -1,10 +1,10 @@
 /** User-facing Design copy — Items only. */
 
 export const PAGE_INTRO = {
-  title: "Design",
+  title: "Setup",
   lead:
-    "Build your workspace from Items — add fields, link Items together, then choose how they appear.",
-  note: "Each workspace has its own Design schema and SQLite database. Links are fields you add on an Item. Apply Changes to make edits live.",
+    "Define the Items this workspace tracks, link them together, then open Browse to work with records.",
+  note: "Each workspace has its own model and database. Apply Changes makes structural edits live.",
 };
 
 export const PANEL_HELP = {
@@ -13,7 +13,7 @@ export const PANEL_HELP = {
   connections:
     "Links are created when you add another Item as a field — many-to-many, one-to-one, or owned-by.",
   views:
-    "Tabs in Workspace. Pick the primary Item, connected Items (joins), and which columns appear — editable, read-only, or chips for many-to-many links.",
+    "Tabs in Browse. Pick the primary Item, connected Items (joins), and which columns appear — editable, read-only, or chips for many-to-many links.",
 };
 
 export const PRIMITIVE_HELP = {
@@ -62,7 +62,7 @@ export const VIEW_HELP = {
   grid: {
     label: "Tab",
     summary:
-      "A workspace grid over a primary Item plus optional connected joins (chips and related fields).",
+      "A Browse grid over a primary Item plus optional connected joins (chips and related fields).",
     bestFor: ["Notes", "Tags", "References", "any working data"],
   },
 };
@@ -71,7 +71,7 @@ export const FIELD_HELP =
   "Choose a simple value, or link to another Item as a field (you pick many, one, or owned-by).";
 
 export const INSPECTOR_HELP =
-  "Select an Item on the map to edit its values and links. Apply Changes makes the workspace live.";
+  "Edit Item values and links in Setup, then Apply Changes. Day-to-day tab tweaks live in Browse → Customize.";
 
 export const ENTITY_EXAMPLES =
   "Examples: Note, Notebook, Tag, Student, Class, Rubric.";

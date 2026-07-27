@@ -62,11 +62,14 @@ export function mountBrainstormFlow({
 
   const head = document.createElement("header");
   head.className = "brainstorm-head";
+  const stepsEl = document.createElement("nav");
+  stepsEl.className = "wizard-steps brainstorm-steps";
+  stepsEl.setAttribute("aria-label", "Setup steps");
   const titleEl = document.createElement("h2");
   titleEl.className = "brainstorm-title";
   const coachEl = document.createElement("p");
   coachEl.className = "brainstorm-coach";
-  head.append(titleEl, coachEl);
+  head.append(stepsEl, titleEl, coachEl);
 
   const canvas = document.createElement("div");
   canvas.className = "brainstorm-canvas";
@@ -106,14 +109,36 @@ export function mountBrainstormFlow({
     return workingSchema;
   }
 
+  function renderSteps() {
+    stepsEl.innerHTML = "";
+    STEPS.forEach((id, i) => {
+      const copy = STEP_COPY[id];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "wizard-step" +
+        (i === stepIndex ? " active" : "") +
+        (i < stepIndex ? " done" : "");
+      btn.disabled = i > stepIndex;
+      btn.innerHTML = `<span class="wizard-step-label">${i + 1}. ${escapeHtml(copy.short || copy.title)}</span><span class="wizard-step-short">${escapeHtml(copy.title)}</span>`;
+      btn.addEventListener("click", () => {
+        if (i >= stepIndex) return;
+        stepIndex = i;
+        render();
+      });
+      stepsEl.appendChild(btn);
+    });
+  }
+
   function render() {
     const step = currentStep();
     const copy = STEP_COPY[step];
     titleEl.textContent = copy.title;
     coachEl.textContent = copy.coach;
+    renderSteps();
 
     backBtn.disabled = stepIndex === 0;
-    nextBtn.textContent = step === "tabs" ? "Finish" : "Continue";
+    nextBtn.textContent = step === "tabs" ? "Finish & open Browse" : "Continue";
 
     const ready = stepReady(step, state);
     const reason = stepBlockedReason(step, state);

@@ -1,6 +1,15 @@
 /** Shared modal helpers for Design tab. */
 
-export function openModal({ title, body, onConfirm, confirmLabel = "Add", wide = false }) {
+export function openModal({
+  title,
+  body,
+  onConfirm,
+  confirmLabel = "Add",
+  cancelLabel = "Cancel",
+  wide = false,
+  danger = false,
+  hideCancel = false,
+}) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
@@ -23,10 +32,10 @@ export function openModal({ title, body, onConfirm, confirmLabel = "Add", wide =
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "btn";
-    cancel.textContent = "Cancel";
+    cancel.textContent = cancelLabel;
     const ok = document.createElement("button");
     ok.type = "button";
-    ok.className = "btn btn-primary";
+    ok.className = "btn " + (danger ? "btn-danger" : "btn-primary");
     ok.textContent = confirmLabel;
 
     function close(result) {
@@ -44,10 +53,49 @@ export function openModal({ title, body, onConfirm, confirmLabel = "Add", wide =
       close(value);
     });
 
-    actions.append(cancel, ok);
+    if (!hideCancel) actions.append(cancel);
+    actions.append(ok);
     modal.appendChild(actions);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+    setTimeout(() => ok.focus(), 0);
+  });
+}
+
+/** Confirm dialog — returns true if confirmed. */
+export function confirmModal({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  danger = false,
+}) {
+  return openModal({
+    title,
+    body: (content) => {
+      const p = document.createElement("p");
+      p.className = "modal-message";
+      p.textContent = message;
+      content.appendChild(p);
+    },
+    confirmLabel,
+    cancelLabel,
+    danger,
+  }).then((result) => Boolean(result));
+}
+
+/** Simple notice dialog. */
+export function noticeModal({ title, message, confirmLabel = "OK" }) {
+  return openModal({
+    title,
+    body: (content) => {
+      const p = document.createElement("p");
+      p.className = "modal-message";
+      p.textContent = message;
+      content.appendChild(p);
+    },
+    confirmLabel,
+    hideCancel: true,
   });
 }
 

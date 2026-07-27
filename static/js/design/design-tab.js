@@ -5,8 +5,9 @@ import {
 import { mountBrainstormFlow } from "./brainstorm-flow.js";
 import { importSchemaToBrainstormState } from "./brainstorm.js";
 import { PAGE_INTRO, helpParagraph } from "./help-text.js";
+import { confirmModal } from "./modals.js";
 
-export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
+export function initDesignTab({ mount, getSchema, setSchema, onPreview, onApplied }) {
   let workingSchema = structuredClone(getSchema());
   let startedBlank = false;
   let brainstormMode = false;
@@ -14,24 +15,22 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   const intro = document.createElement("div");
   intro.className = "design-intro";
-  intro.innerHTML = `<h2>${PAGE_INTRO.title}</h2>`;
+  const introTitle = document.createElement("h2");
+  introTitle.textContent = PAGE_INTRO.title;
+  intro.appendChild(introTitle);
   const workspaceScope = document.createElement("p");
   workspaceScope.className = "design-workspace-scope muted";
   intro.appendChild(workspaceScope);
   intro.appendChild(helpParagraph(PAGE_INTRO.lead));
-  intro.appendChild(helpParagraph(PAGE_INTRO.note));
-  const howDetails = document.createElement("details");
-  howDetails.className = "design-how";
-  howDetails.innerHTML = `
-    <summary>How Design works</summary>
-    <ol class="design-how-list">
-      <li><strong>Items</strong> — kinds of records you track</li>
-      <li><strong>Fields</strong> — values on an Item, or link to another Item</li>
-      <li><strong>Workspace tabs</strong> — layout in Workspace; links show as joins/chips</li>
-      <li><strong>Apply Changes</strong> — make it live</li>
-    </ol>
+
+  const path = document.createElement("ol");
+  path.className = "design-path";
+  path.innerHTML = `
+    <li><strong>1. Name</strong> what you track</li>
+    <li><strong>2. Shape</strong> fields and links</li>
+    <li><strong>3. Browse</strong> and add records</li>
   `;
-  intro.appendChild(howDetails);
+  intro.appendChild(path);
 
   const toolbar = document.createElement("div");
   toolbar.className = "design-toolbar";
@@ -50,7 +49,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   const previewBtn = document.createElement("button");
   previewBtn.type = "button";
   previewBtn.className = "btn";
-  previewBtn.textContent = "Preview in Workspace";
+  previewBtn.textContent = "Open Browse";
 
   const applyBtn = document.createElement("button");
   applyBtn.type = "button";
@@ -71,11 +70,18 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   function updateWorkspaceIntro() {
     const title = workingSchema.site?.title || "Workspace";
-    const db = workingSchema.storage?.local_db || "";
-    const dbName = db ? db.split("/").pop() : "";
-    workspaceScope.textContent = dbName
-      ? `Design for “${title}” · ${dbName}`
-      : `Design for “${title}”`;
+    workspaceScope.textContent = `Setup for “${title}”`;
+  }
+
+  function syncToolbarVisibility() {
+    const empty = !Object.keys(workingSchema.entity_types || {}).length;
+    const inFlow = brainstormMode || (empty && startedBlank);
+    const showTools = !inFlow && !empty;
+    toolbar.hidden = !showTools;
+    intro.hidden = inFlow;
+    if (!inFlow && empty) {
+      path.hidden = false;
+    }
   }
 
   function onSchemaChange(updated) {
@@ -97,6 +103,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   function renderMain() {
     updateSummary();
+    syncToolbarVisibility();
     main.innerHTML = "";
     const entityCount = Object.keys(workingSchema.entity_types || {}).length;
     if (!entityCount && !startedBlank && !brainstormMode) {
@@ -114,6 +121,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   function renderBrainstorm() {
     intro.hidden = true;
+    syncToolbarVisibility();
     const entityCount = Object.keys(workingSchema.entity_types || {}).length;
     const initialState =
       entityCount > 0 ? importSchemaToBrainstormState(workingSchema) : undefined;
@@ -126,7 +134,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
         onSchemaChange(updated);
       },
       onApply: async () => {
-        const applied = await doApply();
+        const applied = await doApply({ afterBrowse: true });
         if (applied) {
           brainstormMode = false;
           startedBlank = false;
@@ -139,37 +147,25 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
 
   function renderConfiguredState() {
     intro.hidden = false;
+    path.hidden = true;
+    syncToolbarVisibility();
     const panel = document.createElement("div");
     panel.className = "design-configured";
 
+    const badge = document.createElement("p");
+    badge.className = "design-configured-badge";
+    badge.textContent = "Ready to use";
+    panel.appendChild(badge);
+
     const heading = document.createElement("h3");
-    heading.textContent = "Workspace is set up";
+    heading.textContent = "Your model is set up";
     panel.appendChild(heading);
 
     const hint = document.createElement("p");
     hint.className = "design-help";
     hint.textContent =
-      "Edit the full design below, or fine-tune tabs and columns in Workspace → Customize.";
+      "Add and edit records in Browse. Re-open brainstorm to reshape Items, or use Customize in Browse for tabs and fields.";
     panel.appendChild(hint);
-
-    const actions = document.createElement("div");
-    actions.className = "design-configured-actions";
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "btn btn-primary";
-    editBtn.textContent = "Edit design";
-    editBtn.addEventListener("click", () => {
-      brainstormMode = true;
-      intro.hidden = true;
-      statusEl.textContent = "";
-      messages.hidden = true;
-      renderMain();
-    });
-    const customizeHint = document.createElement("span");
-    customizeHint.className = "muted design-configured-hint";
-    customizeHint.textContent = "Start over in the sidebar resets everything.";
-    actions.append(editBtn, customizeHint);
-    panel.appendChild(actions);
 
     const list = document.createElement("ul");
     list.className = "design-configured-list";
@@ -185,10 +181,36 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       list.innerHTML = "<li class='muted'>No record types yet.</li>";
     }
     panel.appendChild(list);
+
+    const actions = document.createElement("div");
+    actions.className = "design-configured-actions";
+    const browseBtn = document.createElement("button");
+    browseBtn.type = "button";
+    browseBtn.className = "btn btn-primary";
+    browseBtn.textContent = "Open Browse";
+    browseBtn.addEventListener("click", doPreview);
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn";
+    editBtn.textContent = "Edit design";
+    editBtn.addEventListener("click", () => {
+      brainstormMode = true;
+      intro.hidden = true;
+      statusEl.textContent = "";
+      messages.hidden = true;
+      renderMain();
+    });
+    const customizeHint = document.createElement("p");
+    customizeHint.className = "design-configured-next muted";
+    customizeHint.textContent =
+      "Next: Browse → Customize to tweak tabs and fields. Start over in the sidebar resets everything.";
+    actions.append(browseBtn, editBtn, customizeHint);
+    panel.appendChild(actions);
+
     main.appendChild(panel);
   }
 
-  async function doApply() {
+  async function doApply({ afterBrowse = false } = {}) {
     try {
       statusEl.textContent = "Checking…";
       const toApply = schemaForApi(workingSchema);
@@ -201,7 +223,12 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       const preview = validation.diff;
       if (preview) {
         const summary = formatDiffPreview(preview);
-        if (!confirm(`Apply these changes to your workspace?\n\n${summary}`)) {
+        const ok = await confirmModal({
+          title: "Apply these changes?",
+          message: summary,
+          confirmLabel: "Apply Changes",
+        });
+        if (!ok) {
           statusEl.textContent = "";
           return false;
         }
@@ -212,6 +239,7 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
       setSchema(workingSchema);
       showMessages([formatAppliedDiff(result.diff)], "ok");
       statusEl.textContent = "Changes applied";
+      if (afterBrowse) onApplied?.();
       return true;
     } catch (err) {
       showMessages([formatErrorLine(err)], "error");
@@ -226,15 +254,22 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   }
 
   function renderEmptyState() {
+    intro.hidden = false;
+    path.hidden = false;
+    syncToolbarVisibility();
     const empty = document.createElement("div");
     empty.className = "design-empty";
-    empty.innerHTML = `<h3>Design this workspace</h3><p class="design-help">This workspace has no Item types yet. Brainstorm what to track to get started.</p>`;
+    empty.innerHTML = `
+      <p class="design-empty-kicker">Start here</p>
+      <h3>Design what this workspace tracks</h3>
+      <p class="design-help">Brainstorm the records and details you need. When you finish, Browse opens so you can start adding data.</p>
+    `;
     const actions = document.createElement("div");
     actions.className = "design-empty-actions";
     const brainstormBtn = document.createElement("button");
     brainstormBtn.type = "button";
-    brainstormBtn.className = "btn btn-primary";
-    brainstormBtn.textContent = "Brainstorm";
+    brainstormBtn.className = "btn btn-primary btn-lg";
+    brainstormBtn.textContent = "Start brainstorm";
     brainstormBtn.addEventListener("click", () => {
       workingSchema = blankWorkspace(workingSchema);
       startedBlank = true;
@@ -289,11 +324,11 @@ export function initDesignTab({ mount, getSchema, setSchema, onPreview }) {
   }
 
   function formatAppliedDiff(diff) {
-    if (!diff) return "Your changes are live in Workspace.";
+    if (!diff) return "Your changes are live in Browse.";
     const cols = diff.new_columns?.length || 0;
     const tables = diff.new_tables?.length || 0;
-    if (!cols && !tables) return "Your changes are live in Workspace.";
-    return `Applied: ${tables} table(s), ${cols} field(s). Live in Workspace.`;
+    if (!cols && !tables) return "Your changes are live in Browse.";
+    return `Applied: ${tables} table(s), ${cols} field(s). Live in Browse.`;
   }
 
   updateWorkspaceIntro();

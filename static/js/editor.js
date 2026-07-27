@@ -1,5 +1,12 @@
 import { mountAppWorkspaceBar } from "./app-workspaces.js";
 import { initDesignTab } from "./design/design-tab.js";
+import { noticeModal } from "./design/modals.js";
+import {
+  isSchemaEmpty,
+  phaseCopy,
+  preferredModeForSchema,
+  workspacePhase,
+} from "./journey.js";
 import { mountCustomizePanel } from "./views/customize-panel.js";
 import { renderGridView } from "./views/grid-view.js";
 import { ensureViewShape } from "./view-columns.js";
@@ -26,12 +33,26 @@ tabs.forEach((tab) => {
 });
 
 function switchMode(mode) {
+  if (mode === "edit" && isSchemaEmpty(schema)) {
+    renderBrowseGate(true);
+    mode = "edit";
+  } else {
+    renderBrowseGate(false);
+  }
+
   tabs.forEach((t) => {
     const on = t.dataset.mode === mode;
     t.classList.toggle("active", on);
     t.setAttribute("aria-selected", on);
+    if (t.dataset.mode === "edit") {
+      t.classList.toggle("is-locked", isSchemaEmpty(schema));
+      t.title = isSchemaEmpty(schema)
+        ? "Finish Setup first"
+        : "Browse and edit records";
+    }
   });
   panels.forEach((p) => p.classList.toggle("active", p.dataset.mode === mode));
+  updateJourneyChip();
 }
 
 function getDefaultContainerId() {
@@ -48,7 +69,9 @@ function getActiveWorkspaceId() {
 
 function updateHeaderMeta() {
   if (!schema) return;
-  document.title = schema.site.title + " — Design";
+  const phase = workspacePhase(schema);
+  const copy = phaseCopy(phase);
+  document.title = `${schema.site.title} — ${phase === "setup" ? "Setup" : "Browse"}`;
   const titleEl = document.getElementById("site-title");
   const db = schema.storage?.local_db || "data.db";
   const dbName = db.split("/").pop();
@@ -57,6 +80,48 @@ function updateHeaderMeta() {
   titleEl.title = meta;
   const metaEl = document.getElementById("site-meta");
   if (metaEl) metaEl.textContent = meta;
+  updateJourneyChip(copy);
+}
+
+function updateJourneyChip(copy) {
+  const chip = document.getElementById("journey-chip");
+  if (!chip || !schema) return;
+  const phase = copy || phaseCopy(workspacePhase(schema));
+  chip.hidden = false;
+  chip.dataset.phase = phase.id;
+  chip.textContent = phase.label;
+  chip.title = phase.hint;
+}
+
+function renderBrowseGate(show) {
+  const gate = document.getElementById("browse-gate");
+  const layout = document.querySelector("#panel-edit .workspace-layout");
+  if (!gate || !layout) return;
+  gate.hidden = !show;
+  layout.hidden = show;
+  if (!show) {
+    gate.innerHTML = "";
+    return;
+  }
+  gate.innerHTML = "";
+  gate.className = "browse-gate";
+
+  const title = document.createElement("h2");
+  title.textContent = "Finish Setup first";
+  const lead = document.createElement("p");
+  lead.className = "browse-gate-lead";
+  lead.textContent =
+    "This workspace has no record types yet. Brainstorm what you track in Setup, then come back here to add records.";
+  const cta = document.createElement("button");
+  cta.type = "button";
+  cta.className = "btn btn-primary";
+  cta.textContent = "Go to Setup";
+  cta.addEventListener("click", () => switchMode("design"));
+  gate.append(title, lead, cta);
+}
+
+function switchToBrowse() {
+  switchMode("edit");
 }
 
 async function initWorkspacePicker() {
@@ -64,9 +129,11 @@ async function initWorkspacePicker() {
   if (!mount || !schema) return;
   if (!getContainerEntityId(schema)) {
     mount.hidden = true;
+    mount.innerHTML = "";
     return;
   }
 
+  mount.hidden = false;
   const siteId = schema.site?.id || "default";
   activeWorkspaceId = loadStoredWorkspaceId(siteId) || getDefaultContainerId();
 
@@ -87,11 +154,10 @@ async function initWorkspacePicker() {
   }
 }
 
-function switchToWorkspace() {
-  switchMode("edit");
-}
-
-async function applyWorkspacePayload(data, { startOver = false, created = false, deleted = false } = {}) {
+async function applyWorkspacePayload(
+  data,
+  { startOver = false, created = false, deleted = false } = {}
+) {
   schema = data.schema;
   activeViewId = null;
   activeWorkspaceId = null;
@@ -104,7 +170,10 @@ async function applyWorkspacePayload(data, { startOver = false, created = false,
   } else {
     initDesign();
   }
-  if (startOver || created) switchMode("design");
+  const mode = preferredModeForSchema(schema, {
+    forceSetup: startOver || created,
+  });
+  switchMode(mode);
 }
 
 function initAppWorkspaceBar() {
@@ -133,10 +202,11 @@ async function loadSchema() {
       initDesign();
     } catch (err) {
       if (status) {
-        status.textContent = "Design map failed to load: " + err.message;
+        status.textContent = "Setup failed to load: " + err.message;
         status.classList.add("error");
       }
     }
+    switchMode(preferredModeForSchema(schema));
     if (status && !status.classList.contains("error")) status.textContent = "";
   } catch (err) {
     if (status) {
@@ -154,10 +224,17 @@ function initDesign() {
     getSchema: () => schema,
     setSchema: (next) => {
       schema = next;
+      updateHeaderMeta();
       renderViewTabs(false);
     },
     onPreview: () => {
-      switchToWorkspace();
+      switchToBrowse();
+      if (activeViewId) showView(activeViewId);
+      else renderViewTabs();
+    },
+    onApplied: () => {
+      updateHeaderMeta();
+      switchToBrowse();
       if (activeViewId) showView(activeViewId);
       else renderViewTabs();
     },
@@ -173,6 +250,7 @@ function initCustomizePanel() {
     getSchema: () => schema,
     setSchema: (next) => {
       schema = next;
+      updateHeaderMeta();
       renderViewTabs(false);
     },
     getActiveViewId: () => activeViewId,
@@ -195,7 +273,9 @@ function renderViewTabs(switchToFirst = true) {
 
   (schema.views || []).forEach((view, i) => {
     const btn = document.createElement("button");
-    btn.className = "view-tab" + ((switchToFirst && i === 0) || view.id === activeViewId ? " active" : "");
+    btn.className =
+      "view-tab" +
+      ((switchToFirst && i === 0) || view.id === activeViewId ? " active" : "");
     btn.textContent = view.label;
     btn.dataset.viewId = view.id;
     btn.addEventListener("click", () => {
@@ -227,7 +307,10 @@ function renderViewTabs(switchToFirst = true) {
       try {
         await downloadExport("/api/export/json.zip", "export.zip");
       } catch (err) {
-        alert(err.message || "Export failed");
+        await noticeModal({
+          title: "Export failed",
+          message: err.message || "Export failed",
+        });
       }
     });
     const xlsxBtn = document.createElement("button");
@@ -238,7 +321,10 @@ function renderViewTabs(switchToFirst = true) {
       try {
         await downloadExport("/api/export/xlsx", "export.xlsx");
       } catch (err) {
-        alert(err.message || "Export failed");
+        await noticeModal({
+          title: "Export failed",
+          message: err.message || "Export failed",
+        });
       }
     });
     exportBar.append(jsonBtn, xlsxBtn);

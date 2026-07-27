@@ -10,16 +10,19 @@ import { slugify } from "./modals.js";
 
 export const STEP_COPY = {
   setup: {
-    title: "Build your workspace",
+    title: "Name what you track",
+    short: "Build",
     coach:
       "Add concepts at the top, mark each as Record or Detail, then add values on each record card. The same detail can go on multiple records.",
   },
   review: {
     title: "Does this look right?",
+    short: "Review",
     coach: "Each record stores a name plus the values you added. Links were created automatically.",
   },
   tabs: {
-    title: "Workspace tabs",
+    title: "Choose Browse tabs",
+    short: "Tabs",
     coach: "Each tab shows one kind of record. Joins are filled in from your linked records.",
   },
 };

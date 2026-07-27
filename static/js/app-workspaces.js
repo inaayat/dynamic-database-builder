@@ -1,4 +1,4 @@
-/** App-level workspace switcher — each workspace has its own schema + SQLite DB. */
+/** App-level workspace switcher — each workspace has its own schema + DB. */
 
 import {
   activateWorkspace,
@@ -8,6 +8,22 @@ import {
   startOverWorkspace,
 } from "./schema-client.js?v=2";
 import { FORMAT_OPTIONS } from "./design/brainstorm.js";
+import { confirmModal, noticeModal } from "./design/modals.js";
+
+const FORMAT_HINTS = {
+  text: "Best for short labels, names, and titles.",
+  longtext: "Best for notes, descriptions, and free writing.",
+  date: "Best when most values are calendar dates.",
+  datetime: "Best when values need a date and time.",
+  enum: "Best when values come from a fixed set of choices.",
+  number: "Best for counts, scores, and quantities.",
+  currency: "Best for money amounts.",
+  percent: "Best for rates and progress.",
+  rating: "Best for star-style scores.",
+  boolean: "Best for yes/no flags.",
+  url: "Best for links and web addresses.",
+  bullet_list: "Best for short lists inside a field.",
+};
 
 export function mountAppWorkspaceBar({ mount, onChange, variant = "sidebar" }) {
   if (variant === "sidebar") {
@@ -23,9 +39,17 @@ function mountCreateForm({ onSubmit, onCancel }) {
   panel.className = "app-workspace-create";
   panel.hidden = true;
 
+  let step = 1;
+
+  const progress = document.createElement("div");
+  progress.className = "app-workspace-create-progress";
+  progress.setAttribute("aria-hidden", "true");
+
   const title = document.createElement("p");
   title.className = "app-workspace-create-title";
-  title.textContent = "New workspace";
+
+  const coach = document.createElement("p");
+  coach.className = "app-workspace-create-coach";
 
   const nameLabel = document.createElement("label");
   nameLabel.className = "app-workspace-create-label";
@@ -33,13 +57,13 @@ function mountCreateForm({ onSubmit, onCancel }) {
   const nameInput = document.createElement("input");
   nameInput.type = "text";
   nameInput.className = "app-workspace-create-input";
-  nameInput.placeholder = "e.g. diary";
+  nameInput.placeholder = "e.g. Teaching notes";
   nameInput.autocomplete = "off";
   nameLabel.append(nameInput);
 
   const formatLabel = document.createElement("label");
   formatLabel.className = "app-workspace-create-label";
-  formatLabel.textContent = "Format type";
+  formatLabel.textContent = "Default field format";
   const formatSelect = document.createElement("select");
   formatSelect.className = "app-workspace-create-input app-workspace-create-select";
   FORMAT_OPTIONS.forEach((opt) => {
@@ -51,30 +75,67 @@ function mountCreateForm({ onSubmit, onCancel }) {
   });
   formatLabel.append(formatSelect);
 
+  const formatHint = document.createElement("p");
+  formatHint.className = "app-workspace-create-hint";
+
   const errorEl = document.createElement("p");
   errorEl.className = "app-workspace-create-error muted";
   errorEl.hidden = true;
 
   const actions = document.createElement("div");
   actions.className = "app-workspace-create-actions";
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.className = "btn btn-sm";
+  backBtn.textContent = "Back";
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
   cancelBtn.className = "btn btn-sm";
   cancelBtn.textContent = "Cancel";
-  const createBtn = document.createElement("button");
-  createBtn.type = "button";
-  createBtn.className = "btn btn-sm btn-primary";
-  createBtn.textContent = "Create";
-  actions.append(cancelBtn, createBtn);
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.className = "btn btn-sm btn-primary";
+  nextBtn.textContent = "Continue";
+  actions.append(backBtn, cancelBtn, nextBtn);
 
-  panel.append(title, nameLabel, formatLabel, errorEl, actions);
+  panel.append(progress, title, coach, nameLabel, formatLabel, formatHint, errorEl, actions);
+
+  function updateFormatHint() {
+    formatHint.textContent =
+      FORMAT_HINTS[formatSelect.value] || "You can change individual fields later.";
+  }
+
+  function renderStep() {
+    const onName = step === 1;
+    title.textContent = onName ? "Name this workspace" : "Choose a default format";
+    coach.textContent = onName
+      ? "A workspace is a separate place with its own structure and data."
+      : "New fields start with this format. You can override any field later.";
+    nameLabel.hidden = !onName;
+    formatLabel.hidden = onName;
+    formatHint.hidden = onName;
+    backBtn.hidden = onName;
+    nextBtn.textContent = onName ? "Continue" : "Create & set up";
+    progress.innerHTML = "";
+    [1, 2].forEach((n) => {
+      const dot = document.createElement("span");
+      dot.className =
+        "app-workspace-create-dot" +
+        (n === step ? " active" : "") +
+        (n < step ? " done" : "");
+      progress.appendChild(dot);
+    });
+    if (!onName) updateFormatHint();
+  }
 
   function show() {
     panel.hidden = false;
+    step = 1;
     errorEl.hidden = true;
     errorEl.textContent = "";
     nameInput.value = "";
     formatSelect.value = "longtext";
+    renderStep();
     setTimeout(() => nameInput.focus(), 0);
   }
 
@@ -82,10 +143,12 @@ function mountCreateForm({ onSubmit, onCancel }) {
     panel.hidden = true;
     errorEl.hidden = true;
     errorEl.textContent = "";
+    step = 1;
   }
 
   function setBusy(busy) {
-    createBtn.disabled = busy;
+    nextBtn.disabled = busy;
+    backBtn.disabled = busy;
     cancelBtn.disabled = busy;
     nameInput.disabled = busy;
     formatSelect.disabled = busy;
@@ -96,16 +159,33 @@ function mountCreateForm({ onSubmit, onCancel }) {
     errorEl.hidden = !message;
   }
 
-  async function submit() {
-    const title = nameInput.value.trim();
-    if (!title) {
+  async function goNext() {
+    if (step === 1) {
+      const titleValue = nameInput.value.trim();
+      if (!titleValue) {
+        showError("Enter a workspace name.");
+        nameInput.focus();
+        return;
+      }
+      showError("");
+      step = 2;
+      renderStep();
+      formatSelect.focus();
+      return;
+    }
+
+    const titleValue = nameInput.value.trim();
+    if (!titleValue) {
+      step = 1;
+      renderStep();
       showError("Enter a workspace name.");
       nameInput.focus();
       return;
     }
+
     setBusy(true);
     try {
-      await onSubmit({ title, formatType: formatSelect.value });
+      await onSubmit({ title: titleValue, formatType: formatSelect.value });
       hide();
     } catch (err) {
       showError(err.message || "Could not create workspace.");
@@ -114,15 +194,22 @@ function mountCreateForm({ onSubmit, onCancel }) {
     }
   }
 
-  createBtn.addEventListener("click", () => submit());
+  nextBtn.addEventListener("click", () => goNext());
+  backBtn.addEventListener("click", () => {
+    step = 1;
+    showError("");
+    renderStep();
+    nameInput.focus();
+  });
   cancelBtn.addEventListener("click", () => {
     hide();
     onCancel?.();
   });
+  formatSelect.addEventListener("change", updateFormatHint);
   nameInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      submit();
+      goNext();
     }
     if (e.key === "Escape") {
       e.preventDefault();
@@ -214,6 +301,10 @@ function mountBar({ mount, onChange }) {
 function mountSidebar({ mount, onChange }) {
   let state = { active_id: null, workspaces: [] };
 
+  const brand = document.createElement("div");
+  brand.className = "app-workspace-sidebar-brand";
+  brand.innerHTML = `<span class="app-workspace-sidebar-brand-mark">◆</span><span>Databaser</span>`;
+
   const head = document.createElement("div");
   head.className = "app-workspace-sidebar-head";
   head.textContent = "Workspaces";
@@ -241,6 +332,12 @@ function mountSidebar({ mount, onChange }) {
   newBtn.textContent = "+ New workspace";
   newBtn.title = "Create a new workspace";
 
+  const manageDetails = document.createElement("details");
+  manageDetails.className = "app-workspace-sidebar-manage";
+  const manageSummary = document.createElement("summary");
+  manageSummary.textContent = "Manage";
+  manageDetails.appendChild(manageSummary);
+
   const startOverBtn = document.createElement("button");
   startOverBtn.type = "button";
   startOverBtn.className = "btn btn-sm app-workspace-start-over";
@@ -253,8 +350,9 @@ function mountSidebar({ mount, onChange }) {
   deleteBtn.textContent = "Delete workspace";
   deleteBtn.title = "Remove this workspace and its database";
 
-  actions.append(newBtn, startOverBtn, deleteBtn);
-  mount.append(head, list, createForm.panel, actions);
+  manageDetails.append(startOverBtn, deleteBtn);
+  actions.append(newBtn, manageDetails);
+  mount.append(brand, head, list, createForm.panel, actions);
 
   newBtn.addEventListener("click", () => {
     if (createForm.isOpen()) {
@@ -295,9 +393,9 @@ function mountSidebar({ mount, onChange }) {
       title.textContent = ws.title;
 
       const meta = document.createElement("span");
-      meta.className = "app-workspace-sidebar-item-meta muted";
-      meta.textContent = ws.empty ? "empty" : "";
-      meta.hidden = !ws.empty;
+      meta.className =
+        "app-workspace-sidebar-item-meta" + (ws.empty ? " is-setup" : " is-ready");
+      meta.textContent = ws.empty ? "Needs setup" : "Ready";
 
       btn.append(title, meta);
       btn.addEventListener("click", async () => {
@@ -323,7 +421,7 @@ function mountSidebar({ mount, onChange }) {
 }
 
 function workspaceLabel(ws) {
-  return ws.title + (ws.empty ? " (empty)" : "");
+  return ws.title + (ws.empty ? " (needs setup)" : "");
 }
 
 async function refresh(state, render) {
@@ -339,7 +437,10 @@ async function switchWorkspace(id, state, onChange, onError) {
     state.active_id = data.active_id;
     onChange?.(data);
   } catch (err) {
-    alert(err.message || "Could not switch workspace.");
+    await noticeModal({
+      title: "Could not switch",
+      message: err.message || "Could not switch workspace.",
+    });
     onError?.();
   }
 }
@@ -347,19 +448,22 @@ async function switchWorkspace(id, state, onChange, onError) {
 async function startOverActive(state, onChange, trigger) {
   const active = state.workspaces.find((w) => w.id === state.active_id);
   const name = active?.title || "this workspace";
-  if (
-    !confirm(
-      `Start over “${name}”?\n\nThis clears the Design schema and deletes all data in this workspace’s database. This cannot be undone.`
-    )
-  ) {
-    return;
-  }
+  const ok = await confirmModal({
+    title: "Start over?",
+    message: `Clear “${name}”? This removes the Setup model and deletes all records. This cannot be undone.`,
+    confirmLabel: "Start over",
+    danger: true,
+  });
+  if (!ok) return;
   trigger.disabled = true;
   try {
     const data = await startOverWorkspace(state.active_id);
     onChange?.(data, { startOver: true });
   } catch (err) {
-    alert(err.message || "Could not start over.");
+    await noticeModal({
+      title: "Could not start over",
+      message: err.message || "Could not start over.",
+    });
   } finally {
     trigger.disabled = false;
   }
@@ -367,18 +471,21 @@ async function startOverActive(state, onChange, trigger) {
 
 async function deleteActive(state, onChange, trigger, afterDelete) {
   if (state.workspaces.length <= 1) {
-    alert("You need at least one workspace.");
+    await noticeModal({
+      title: "Keep one workspace",
+      message: "You need at least one workspace.",
+    });
     return;
   }
   const active = state.workspaces.find((w) => w.id === state.active_id);
   const name = active?.title || "this workspace";
-  if (
-    !confirm(
-      `Delete “${name}”?\n\nThis removes the workspace, its Design schema, and all data. This cannot be undone.`
-    )
-  ) {
-    return;
-  }
+  const ok = await confirmModal({
+    title: "Delete workspace?",
+    message: `Delete “${name}”? This removes the workspace, its Setup model, and all data. This cannot be undone.`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   trigger.disabled = true;
   try {
     const data = await deleteWorkspace(state.active_id);
@@ -386,7 +493,10 @@ async function deleteActive(state, onChange, trigger, afterDelete) {
     await afterDelete?.();
     onChange?.(data, { deleted: true });
   } catch (err) {
-    alert(err.message || "Could not delete workspace.");
+    await noticeModal({
+      title: "Could not delete",
+      message: err.message || "Could not delete workspace.",
+    });
   } finally {
     trigger.disabled = false;
   }
