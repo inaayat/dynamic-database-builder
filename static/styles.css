@@ -2536,34 +2536,72 @@ main {
 }
 
 .brainstorm-head {
-  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.brainstorm-steps.wizard-steps {
+  margin-bottom: 0;
+}
+
+.brainstorm-steps .wizard-step {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+}
+
+.brainstorm-steps .wizard-step-label,
+.brainstorm-steps .wizard-step-short {
+  display: none;
+}
+
+.brainstorm-guide {
+  padding: 0.7rem 0.85rem;
+  background: color-mix(in srgb, var(--brainstorm-surface) 88%, var(--brainstorm-accent-soft));
+  border: 1px solid color-mix(in srgb, var(--brainstorm-accent) 18%, var(--border));
+  border-radius: 10px;
+}
+
+.brainstorm-guide-lead {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.brainstorm-guide-detail {
+  margin: 0.35rem 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.brainstorm-guide-status {
+  margin: 0.5rem 0 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .brainstorm-brand {
   display: none;
 }
 
-.brainstorm-title {
-  margin: 0;
-  font-family: var(--font);
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--text);
-}
-
-.brainstorm-coach {
-  margin: 0.35rem 0 0;
-  font-size: var(--fs-sm);
-  color: var(--muted);
-  max-width: 40rem;
-  line-height: var(--lh);
-}
-
-.brainstorm-setup-hint {
-  margin: 0;
-  font-size: var(--fs-sm);
-  line-height: var(--lh);
+.brainstorm-title,
+.brainstorm-coach,
+.brainstorm-setup-hint,
+.brainstorm-setup-place-hint {
+  display: none;
 }
 
 .brainstorm-canvas {
@@ -3175,7 +3213,7 @@ main {
 .brainstorm-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.75rem;
   flex-wrap: wrap;
   padding-top: 0.5rem;
@@ -3185,12 +3223,10 @@ main {
 .brainstorm-footer-actions {
   display: flex;
   gap: 0.5rem;
-  margin-left: auto;
 }
 
 .brainstorm-footer-reason {
-  font-size: var(--fs-sm);
-  flex: 1;
+  display: none;
 }
 
 .brainstorm-shell .btn-primary.brainstorm-cta {
@@ -3591,10 +3627,6 @@ main {
     padding: 1rem 0.85rem 0.85rem;
     min-height: 0;
     border-radius: 10px;
-  }
-
-  .brainstorm-title {
-    font-size: var(--fs-lg);
   }
 
   .brainstorm-chips {

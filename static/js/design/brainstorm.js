@@ -10,20 +10,23 @@ import { slugify } from "./modals.js";
 
 export const STEP_COPY = {
   setup: {
-    title: "Name what you track",
+    title: "Build",
     short: "Build",
-    coach:
-      "Add concepts at the top, mark each as Record or Detail, then add values on each record card. The same detail can go on multiple records.",
+    lead: "Add concepts below, mark each as Record or Detail, then place details on records.",
+    detail:
+      "Records are things you track many of (Teacher, Class). Details are plain values (bio, due date) — the same detail can go on multiple records.",
   },
   review: {
-    title: "Does this look right?",
+    title: "Review",
     short: "Review",
-    coach: "Each record stores a name plus the values you added. Links were created automatically.",
+    lead: "Check that each record looks right before choosing Browse tabs.",
+    detail: "Each record stores a name plus the values you added. Links were created automatically.",
   },
   tabs: {
-    title: "Choose Browse tabs",
+    title: "Tabs",
     short: "Tabs",
-    coach: "Each tab shows one kind of record. Joins are filled in from your linked records.",
+    lead: "Choose which Browse tabs to open with — one tab per kind of record.",
+    detail: "Joins are filled in from your linked records. You can fine-tune tabs later in Customize.",
   },
 };
 

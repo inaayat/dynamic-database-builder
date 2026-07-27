@@ -65,20 +65,24 @@ export function mountBrainstormFlow({
   const stepsEl = document.createElement("nav");
   stepsEl.className = "wizard-steps brainstorm-steps";
   stepsEl.setAttribute("aria-label", "Setup steps");
-  const titleEl = document.createElement("h2");
-  titleEl.className = "brainstorm-title";
-  const coachEl = document.createElement("p");
-  coachEl.className = "brainstorm-coach";
-  head.append(stepsEl, titleEl, coachEl);
+
+  const guide = document.createElement("div");
+  guide.className = "brainstorm-guide";
+  const leadEl = document.createElement("p");
+  leadEl.className = "brainstorm-guide-lead";
+  const detailEl = document.createElement("p");
+  detailEl.className = "brainstorm-guide-detail";
+  const statusEl = document.createElement("p");
+  statusEl.className = "brainstorm-guide-status";
+  statusEl.hidden = true;
+  guide.append(leadEl, detailEl, statusEl);
+  head.append(stepsEl, guide);
 
   const canvas = document.createElement("div");
   canvas.className = "brainstorm-canvas";
 
   const footer = document.createElement("footer");
   footer.className = "brainstorm-footer";
-
-  const reasonEl = document.createElement("span");
-  reasonEl.className = "brainstorm-footer-reason muted";
 
   const backBtn = document.createElement("button");
   backBtn.type = "button";
@@ -93,7 +97,7 @@ export function mountBrainstormFlow({
   const footerActions = document.createElement("div");
   footerActions.className = "brainstorm-footer-actions";
   footerActions.append(backBtn, nextBtn);
-  footer.append(reasonEl, footerActions);
+  footer.append(footerActions);
 
   shell.append(head, canvas, footer);
   container.innerHTML = "";
@@ -120,7 +124,8 @@ export function mountBrainstormFlow({
         (i === stepIndex ? " active" : "") +
         (i < stepIndex ? " done" : "");
       btn.disabled = i > stepIndex;
-      btn.innerHTML = `<span class="wizard-step-label">${i + 1}. ${escapeHtml(copy.short || copy.title)}</span><span class="wizard-step-short">${escapeHtml(copy.title)}</span>`;
+      btn.textContent = `${i + 1}. ${copy.short || copy.title}`;
+      btn.title = copy.lead || copy.title;
       btn.addEventListener("click", () => {
         if (i >= stepIndex) return;
         stepIndex = i;
@@ -130,20 +135,33 @@ export function mountBrainstormFlow({
     });
   }
 
+  function renderGuide(step) {
+    const copy = STEP_COPY[step];
+    leadEl.textContent = copy.lead || copy.title;
+    detailEl.textContent = copy.detail || "";
+    detailEl.hidden = !copy.detail;
+
+    const ready = stepReady(step, state);
+    const reason = stepBlockedReason(step, state);
+    if (!ready && reason) {
+      statusEl.hidden = false;
+      statusEl.textContent = reason;
+    } else {
+      statusEl.hidden = true;
+      statusEl.textContent = "";
+    }
+  }
+
   function render() {
     const step = currentStep();
-    const copy = STEP_COPY[step];
-    titleEl.textContent = copy.title;
-    coachEl.textContent = copy.coach;
     renderSteps();
+    renderGuide(step);
 
     backBtn.disabled = stepIndex === 0;
     nextBtn.textContent = step === "tabs" ? "Finish & open Browse" : "Continue";
 
     const ready = stepReady(step, state);
-    const reason = stepBlockedReason(step, state);
     nextBtn.disabled = !ready;
-    reasonEl.textContent = ready ? "" : reason;
 
     canvas.innerHTML = "";
     canvas.className = "brainstorm-canvas brainstorm-canvas--" + step;
@@ -350,26 +368,12 @@ export function mountBrainstormFlow({
     }
     page.appendChild(chipArea);
 
-    const hints = document.createElement("p");
-    hints.className = "brainstorm-setup-hint muted";
-    hints.textContent =
-      "Records are things you track many of (Teacher, Class). Details are plain values (bio, due date) — add the same detail to as many records as you need.";
-    page.appendChild(hints);
-
     const placeSection = document.createElement("section");
     placeSection.className = "brainstorm-setup-place";
-    if (!itemConcepts(state).length) {
-      placeSection.appendChild(
-        el(
-          "p",
-          "muted brainstorm-setup-place-hint",
-          "Mark at least one concept as a Record to start adding values."
-        )
-      );
-    } else {
+    if (itemConcepts(state).length) {
       renderPlace(placeSection);
+      page.appendChild(placeSection);
     }
-    page.appendChild(placeSection);
 
     root.appendChild(page);
 
@@ -395,8 +399,7 @@ export function mountBrainstormFlow({
 
     const trayHint = document.createElement("p");
     trayHint.className = "muted brainstorm-tray-hint";
-    trayHint.textContent =
-      "Place each detail on at least one record. Search on a record card to reuse details elsewhere.";
+    trayHint.textContent = "Drop or search on a record card.";
     tray.appendChild(trayHint);
 
     if (!unplaced.length) {
