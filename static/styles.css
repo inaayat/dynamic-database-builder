@@ -2548,11 +2548,11 @@ main {
 
 .brainstorm-steps .wizard-step {
   flex: 1;
-  min-width: 0;
+  min-width: 7.5rem;
   text-align: center;
   font-size: var(--fs-sm);
   font-weight: 600;
-  padding: 0.4rem 0.5rem;
+  padding: 0.45rem 0.85rem;
 }
 
 .brainstorm-steps .wizard-step-label,
